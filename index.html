@@ -1662,28 +1662,25 @@ function initHandlers(){
     else if(raw.match(/v\.douyin\.com/)){username=raw;}
     else{username=raw.replace('@','').replace(/^抖音号[:：]?\s*/,'').trim();}
 
-    // Fast path: numeric ID or known format → construct URL directly, search for nickname
+    // Fast path: numeric ID → TikHub first, then fallback
     if(/^\d{6,20}$/.test(username) || /^[A-Za-z0-9_-]{10,}$/.test(username)){
       const directUrl=`https://www.douyin.com/user/${username}`;
-      status.textContent='⏳ 验证链接并搜索昵称...';
-      let found={name:'抖音用户',douyinUrl:directUrl,persona:'',_followers:''};
-      // Try to get actual nickname via AnySearch or DeepSeek
-      try{
-        const anyKey=state.settings.anysearchApiKey||'';
-        const resp=await fetch('https://api.anysearch.com/mcp',{method:'POST',headers:{'Content-Type':'application/json',...(anyKey?{'Authorization':`Bearer ${anyKey}`:{}})},body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'extract',arguments:{url:directUrl}},id:1})});
-        const d=await resp.json();const text=d?.result?.content||'';
-        const titleMatch=text.match(/<title>([^<]+)<\/title>/);
-        if(titleMatch){const t=titleMatch[1].replace('抖音','').replace('-','').trim();if(t&&t.length<50) found.name=t;}
-      }catch(e){}
-      if(found.name==='抖音用户'&&state.settings.apiKey){
+      let found=null;
+      // Primary: TikHub (direct Douyin API, most reliable)
+      if(state.settings.tikhubApiKey){
         try{
-          const resp=await fetch(API_BASE,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.apiKey}`},body:JSON.stringify({model:API_MODEL,messages:[{role:'user',content:`抖音号${username}的昵称是什么？只返回JSON:{"name":"昵称"}`}],temperature:0.3,max_tokens:100,response_format:{type:'json_object'}})});
-          const p=JSON.parse((await resp.json()).choices[0].message.content);if(p.name) found.name=p.name;
+          status.textContent='⏳ TikHub 搜索中...';
+          const r=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},body:JSON.stringify({keyword:username,offset:0,count:1})});
+          const d=await r.json();const u=d?.data?.data?.[0]||d?.data?.user_list?.[0];
+          if(u){found={name:u.nickname||u.unique_id||username,douyinUrl:`https://www.douyin.com/user/${u.unique_id||u.sec_uid||username}`,persona:u.signature?.slice(0,80)||'',_followers:u.follower_count?Math.floor(u.follower_count/10000)+'w':''};}
         }catch(e){}
       }
-      status.textContent=`✅ 已读取: ${found.name} | 链接已验证可用`;
-      state.settings._importInfo=found;
-      showAccountModal(null,found);
+      if(found){status.textContent=`✅ 已读取: ${found.name}${found._followers?' | '+found._followers+'粉丝':''}`;state.settings._importInfo=found;showAccountModal(null,found);this.disabled=false;this.textContent='导入';return;}
+      // Fallback: AnySearch page extract
+      status.textContent='⏳ AnySearch 搜索中...';
+      try{const ak=state.settings.anysearchApiKey||'';const r=await fetch('https://api.anysearch.com/mcp',{method:'POST',headers:{'Content-Type':'application/json',...(ak?{'Authorization':`Bearer ${ak}`}:{})},body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'extract',arguments:{url:directUrl}},id:1})});const d=await r.json();const t=(d?.result?.content||'').match(/<title>([^<]+)<\/title>/);if(t){const n=t[1].replace(/抖音/g,'').replace(/-/g,'').trim();if(n&&n.length<50)found={name:n,douyinUrl:directUrl,persona:'',_followers:''};}}catch(e){}
+      if(found){status.textContent=`✅ 已读取: ${found.name}`;state.settings._importInfo=found;showAccountModal(null,found);}
+      else{status.textContent='❌ 未找到。请确认抖音号正确且 TikHub Key 已配置';}
       this.disabled=false;this.textContent='导入';return;
     }
 
