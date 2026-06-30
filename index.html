@@ -1023,12 +1023,20 @@ async function discoverCompetitors(){
   const apiKey=state.settings.apiKey;
   if(!apiKey){ toast('请先配置 DeepSeek API Key','warning');return null }
   const niche=state.settings.defaultNiche||state.accounts[0]?.niche||'通用';
+  // Derive broad category: 卤水→美食, 护肤→美妆, 女装→穿搭, etc.
+  const broadMap={卤水:'美食',熟食:'美食',小吃:'美食',烘焙:'美食',火锅:'美食',烧烤:'美食',奶茶:'美食',咖啡:'美食',卤味:'美食',快餐:'美食',中餐:'美食',西餐:'美食',日料:'美食',韩餐:'美食',甜点:'美食',面食:'美食',海鲜:'美食',烤肉:'美食',串串:'美食',麻辣烫:'美食',护肤:'美妆',彩妆:'美妆',美发:'美妆',美甲:'美妆',女装:'穿搭',男装:'穿搭',童装:'母婴',家居:'家居',数码:'科技',汽车:'汽车',健身:'运动',减肥:'健康',旅游:'旅行',摄影:'摄影',萌宠:'宠物',房产:'房产',教育:'教育',财经:'财经',三农:'三农'};
+  const broadNiche=broadMap[niche]||niche;
   const anysearchKey=state.settings.anysearchApiKey||'';
 
-  // Step 1: Search for real competitor accounts via AnySearch (real-time web)
+  // Step 1: Search broadly via AnySearch (real-time web)
   let webResults=[];
   try{
-    const queries=[
+    const queries=niche!==broadNiche?[
+      `抖音美食 推荐账号 值得关注 头部博主 2025`,
+      `抖音 ${broadNiche} 热门账号 大V 推荐`,
+      `抖音 ${niche} ${broadNiche} 博主 账号 对标`,
+      `抖音 美食博主 排行 涨粉 最新`
+    ]:[
       `抖音 ${niche} 推荐账号 值得关注 2025`,
       `抖音 ${niche} 头部博主 热门账号`,
       `${niche} 抖音 对标账号 竞品分析`
@@ -1050,15 +1058,18 @@ async function discoverCompetitors(){
   // Step 2: Feed web results + niche to DeepSeek for intelligent structuring
   let webContext='';
   if(webResults.length){
-    webContext=`\n\n以下是实时搜索到的${niche}赛道相关账号和文章（${webResults.length}条），请基于这些真实信息推荐对标账号：\n`;
+    webContext=`\n\n以下是实时搜索到的抖音${broadNiche}赛道相关账号（${webResults.length}条），请基于这些真实信息推荐：\n`;
     webResults.forEach((r,i)=>webContext+=`${i+1}. ${r.title}\n   ${r.snippet||''}\n   ${r.url||''}\n`);
   }
 
   const messages=[
-    {role:'system',content:'你是抖音生态分析师。基于提供的实时搜索数据，精准推荐对标账号。只返回JSON。'},
-    {role:'user',content:`帮我在抖音"${niche}"赛道找出10-15个值得关注的对标/竞品账号。
-- 覆盖头部大号、腰部账号、新锐账号三个层次
-- 每个账号给出：昵称、粉丝量级、内容风格/定位、为什么值得关注${webContext}
+    {role:'system',content:'你是抖音生态分析师。基于实时搜索数据推荐真实存在的对标账号。只返回JSON。'},
+    {role:'user',content:`帮我在抖音找出10-15个"${broadNiche}"大类的值得关注账号（只要是美食相关即可，不限细分品类如${niche}）。
+
+${niche!==broadNiche?`注意：我们自身做的是"${niche}"，但对标账号可以是整个"${broadNiche}"大类，只要内容形式和运营思路可借鉴就行，不一定要做同一个细分品类。\n`:''}
+- 必须是抖音上真实存在、搜索昵称就能找到的账号
+- 覆盖头部大号(100w+)、腰部账号(10-100w)、新锐账号(1-10w)三个层次
+- 每个账号给出：昵称、粉丝量级、内容风格、为什么值得借鉴${webContext}
 
 严格JSON格式返回（不要额外文字）：
 {"competitors":[{"name":"账号昵称","followers":"粉丝量级如50w","niche":"细分赛道","style":"内容风格描述","reason":"推荐理由"}]}`}
