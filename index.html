@@ -1677,10 +1677,15 @@ function initHandlers(){
         try{
           status.textContent='⏳ TikHub 搜索中...';
           const r=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},body:JSON.stringify({keyword:username,offset:0,count:1})});
-          const d=await r.json();const u=d?.data?.data?.[0]||d?.data?.user_list?.[0];
-          if(u){found={name:u.nickname||u.unique_id||username,douyinUrl:`https://www.douyin.com/user/${u.unique_id||u.sec_uid||username}`,persona:u.signature?.slice(0,80)||'',_followers:u.follower_count?Math.floor(u.follower_count/10000)+'w':''};}
-        }catch(e){}
-      }
+          const d=await r.json();
+          status.textContent='📡 TikHub 返回: '+JSON.stringify(d).slice(0,300);
+          // Try multiple response paths
+          const u=d?.data?.data?.[0]||d?.data?.user_list?.[0]||d?.data?.users?.[0]||d?.result?.users?.[0];
+          if(!u&&d?.data?.cursor!==undefined){status.textContent='❌ TikHub 返回空结果，请确认抖音号正确';}
+          else if(!u){status.textContent='❌ TikHub 响应异常: '+JSON.stringify(d).slice(0,200);}
+          else{found={name:u.nickname||u.unique_id||username,douyinUrl:`https://www.douyin.com/user/${u.unique_id||u.sec_uid||username}`,persona:u.signature?.slice(0,80)||'',_followers:u.follower_count?Math.floor(u.follower_count/10000)+'w':''};}
+        }catch(e){status.textContent='❌ TikHub 请求失败: '+e.message;}
+      }else{status.textContent='❌ 未配置 TikHub API Key，请先去设置页配置';this.disabled=false;this.textContent='导入';return;}
       if(found){status.textContent=`✅ 已读取: ${found.name}${found._followers?' | '+found._followers+'粉丝':''}`;state.settings._importInfo=found;showAccountModal(null,found);this.disabled=false;this.textContent='导入';return;}
       // Fallback: AnySearch page extract
       status.textContent='⏳ AnySearch 搜索中...';
@@ -1697,13 +1702,13 @@ function initHandlers(){
     if(state.settings.tikhubApiKey){
       try{
         status.textContent='⏳ 通过 TikHub 搜索...';
-        const resp=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{
-          method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},
-          body:JSON.stringify({keyword:username,offset:0,count:3})
-        });const d=await resp.json();
-        const u=d?.data?.data?.[0]||d?.data?.user_list?.[0];
+        const resp=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},body:JSON.stringify({keyword:username,offset:0,count:3})});
+        const d=await resp.json();
+        status.textContent='📡 TikHub: '+JSON.stringify(d).slice(0,200);
+        const u=d?.data?.data?.[0]||d?.data?.user_list?.[0]||d?.data?.users?.[0]||d?.result?.users?.[0];
         if(u){found={name:u.nickname||u.unique_id||username,douyinUrl:`https://www.douyin.com/user/${u.unique_id||u.sec_uid||username}`,persona:u.signature?.slice(0,80)||'',_followers:u.follower_count?Math.floor(u.follower_count/10000)+'w':''};}
-      }catch(e){console.log('TikHub import error:',e);}
+        else{status.textContent='❌ TikHub 未找到此用户: '+JSON.stringify(d).slice(0,250);}
+      }catch(e){status.textContent='❌ TikHub 请求异常: '+e.message;}
     }
 
     // Try 2: AnySearch (search Douyin user page directly)
