@@ -180,6 +180,27 @@ body{font-family:var(--font);font-size:15px;color:var(--text-primary);background
 .settings-block h3{font-size:15px;font-weight:600;margin-bottom:var(--space-lg)}
 .danger-zone{border-color:var(--danger)}
 
+/* ============= Trend Tags ============= */
+.trend-section{max-width:720px;margin:0 auto var(--space-xl);padding:var(--space-lg);background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md)}
+.trend-section__header{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-md)}
+.trend-section__title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:var(--space-sm)}
+.trend-tags{display:flex;flex-wrap:wrap;gap:var(--space-sm)}
+.trend-tag{display:inline-flex;align-items:center;gap:var(--space-xs);padding:var(--space-sm) var(--space-md);background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-full);font-size:12px;cursor:pointer;transition:all var(--transition);user-select:none}
+.trend-tag:hover{border-color:var(--accent)}
+.trend-tag.selected{background:rgba(124,92,252,0.15);border-color:var(--accent);color:var(--accent)}
+.trend-tag .tag-icon{font-size:14px}
+.trend-empty{font-size:12px;color:var(--text-muted);padding:var(--space-md) 0;text-align:center}
+/* Discovery Results */
+.discover-results{display:flex;flex-direction:column;gap:var(--space-sm);max-height:50vh;overflow-y:auto}
+.discover-item{display:flex;align-items:center;gap:var(--space-md);padding:var(--space-md);background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);cursor:pointer;transition:all var(--transition)}
+.discover-item:hover{border-color:var(--accent)}
+.discover-item.selected{background:rgba(124,92,252,0.08);border-color:var(--accent)}
+.discover-item__check{width:20px;height:20px;border-radius:var(--radius-full);border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;transition:all var(--transition)}
+.discover-item.selected .discover-item__check{background:var(--accent);border-color:var(--accent);color:#fff}
+.discover-item__info{flex:1;min-width:0}
+.discover-item__name{font-weight:600;font-size:13px}
+.discover-item__meta{font-size:11px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 /* ============= Loading Spinner ============= */
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -242,6 +263,7 @@ body{font-family:var(--font);font-size:15px;color:var(--text-primary);background
           </button>
         </div>
       </div>
+      <div id="trend-section"></div>
       <div id="dashboard-grid" class="card-grid"></div>
     </section>
 
@@ -262,8 +284,9 @@ body{font-family:var(--font);font-size:15px;color:var(--text-primary);background
       <div class="panel-header">
         <h1>🎯 对标账号库</h1>
         <p class="panel-subtitle">追踪竞品账号和爆款视频，AI 会参考这些数据</p>
-        <div style="margin-top:var(--space-xl)">
+        <div style="margin-top:var(--space-xl);display:flex;gap:var(--space-md);justify-content:center;flex-wrap:wrap">
           <button class="btn btn--primary" id="btn-add-competitor">+ 添加对标账号</button>
+          <button class="btn btn--secondary" id="btn-discover-competitors" data-action="discover-competitors">🤖 AI 发现对标</button>
         </div>
       </div>
       <div id="competitors-list" class="comp-list"></div>
@@ -305,7 +328,7 @@ body{font-family:var(--font);font-size:15px;color:var(--text-primary);background
 // ============ 0. CONSTANTS ============
 const STATUS_FLOW = ['draft', 'filmed', 'editing', 'published'];
 const STATUS_LABELS = { draft:'待拍摄', filmed:'已拍摄', editing:'剪辑中', published:'已发布' };
-const STORAGE_KEYS = { ACCOUNTS:'svf_accounts', COMPETITORS:'svf_competitors', CONTENT:'svf_content', SETTINGS:'svf_settings' };
+const STORAGE_KEYS = { ACCOUNTS:'svf_accounts', COMPETITORS:'svf_competitors', CONTENT:'svf_content', SETTINGS:'svf_settings', TRENDS:'svf_trends' };
 const API_BASE = 'https://api.deepseek.com/v1/chat/completions';
 const API_MODEL = 'deepseek-chat';
 const WEEKDAYS = ['周日','周一','周二','周三','周四','周五','周六'];
@@ -368,6 +391,7 @@ let state={
   accounts:[],
   competitors:[],
   contentItems:[],
+  trends:[],
   settings:{ apiKey:'', defaultNiche:'', defaultBgmStyle:'轻快' }
 };
 
@@ -375,12 +399,14 @@ function loadState(){
   state.accounts = Storage.load(STORAGE_KEYS.ACCOUNTS) || [];
   state.competitors = Storage.load(STORAGE_KEYS.COMPETITORS) || [];
   state.contentItems = Storage.load(STORAGE_KEYS.CONTENT) || [];
+  state.trends = Storage.load(STORAGE_KEYS.TRENDS) || [];
   state.settings = Storage.load(STORAGE_KEYS.SETTINGS) || state.settings;
 }
 
 function saveAccounts(){ Storage.save(STORAGE_KEYS.ACCOUNTS, state.accounts) }
 function saveCompetitors(){ Storage.save(STORAGE_KEYS.COMPETITORS, state.competitors) }
 function saveContent(){ Storage.save(STORAGE_KEYS.CONTENT, state.contentItems) }
+function saveTrends(){ Storage.save(STORAGE_KEYS.TRENDS, state.trends) }
 function saveSettings(){ Storage.save(STORAGE_KEYS.SETTINGS, state.settings) }
 
 function getAccountById(id){ return state.accounts.find(a=>a.id===id) }
@@ -408,8 +434,35 @@ function renderTab(tabName){
 }
 
 // ============ 5. DASHBOARD RENDERER ============
+function renderTrends(){
+  const container=document.getElementById('trend-section');
+  if(!state.trends.length){
+    container.innerHTML=``;
+    return;
+  }
+  const selectedTrends=state.trends.filter(t=>t.selected);
+  container.innerHTML=`
+    <div class="trend-section">
+      <div class="trend-section__header">
+        <span class="trend-section__title">🔥 今日热点 <span style="font-size:11px;color:var(--text-muted);font-weight:400">${selectedTrends.length}个选中，将融入内容生成</span></span>
+        <div style="display:flex;gap:var(--space-sm)">
+          <button class="btn btn--sm btn--ghost" data-action="refresh-trends">🔄 刷新热点</button>
+        </div>
+      </div>
+      <div class="trend-tags">
+        ${state.trends.map((t,i)=>`
+          <span class="trend-tag${t.selected?' selected':''}" data-action="toggle-trend" data-index="${i}">
+            <span class="tag-icon">${t.selected?'✅':'🔥'}</span> ${escapeHtml(t.title)}
+          </span>
+        `).join('')}
+      </div>
+      ${!state.trends.length?`<div class="trend-empty">点击刷新发现当前热门话题</div>`:''}
+    </div>`;
+}
+
 function renderDashboard(){
   document.getElementById('today-date').textContent=formatDate(todayStr());
+  renderTrends();
   const grid=document.getElementById('dashboard-grid');
   const todayItems=state.contentItems.filter(c=>c.date===todayStr());
 
@@ -447,7 +500,7 @@ function buildContentCard(item){
       <div class="card__header-left">
         <div class="card__account-avatar">${escapeHtml(initial)}</div>
         <div>
-          <div class="card__account-name">${escapeHtml(acctName)}</div>
+          <div class="card__account-name">${escapeHtml(acctName)} ${acct?.douyinUrl?`<a href="${escapeHtml(acct.douyinUrl)}" target="_blank" style="font-size:12px;color:var(--info);text-decoration:none">🎵</a>`:''}</div>
           ${acctNiche?`<div class="card__account-niche">${escapeHtml(acctNiche)}</div>`:''}
         </div>
       </div>
@@ -528,6 +581,7 @@ function renderAccounts(){
         ${a.competitorUsernames?.length?`<div class="account-card__meta">对标: ${escapeHtml(a.competitorUsernames.join(' / '))}</div>`:''}
       </div>
       <div class="account-card__actions">
+        ${a.douyinUrl?`<a href="${escapeHtml(a.douyinUrl)}" target="_blank" class="btn btn--sm btn--ghost" style="color:var(--info)">🎵 主页</a>`:''}
         <button class="btn btn--sm btn--ghost" data-action="edit-account" data-id="${a.id}">编辑</button>
         <button class="btn btn--sm btn--danger" data-action="delete-account" data-id="${a.id}">删除</button>
       </div>
@@ -546,6 +600,8 @@ function showAccountModal(account){
         <div class="form-group"><label class="form-label">赛道 / 行业</label><input class="form-input" id="af-niche" value="${escapeHtml(account?.niche||state.settings.defaultNiche||'')}" placeholder="如：美妆护肤"></div>
         <div class="form-group"><label class="form-label">人设 / 定位</label><input class="form-input" id="af-persona" value="${escapeHtml(account?.persona||'')}" placeholder="如：平价好物推荐官"></div>
         <div class="form-group"><label class="form-label">对标账号（抖音用户名，多个用逗号分隔）</label><input class="form-input" id="af-competitors" value="${escapeHtml(account?.competitorUsernames?.join(',')||'')}" placeholder="如：李佳琦,程十安"></div>
+        <div class="form-group"><label class="form-label">抖音主页链接</label><input class="form-input" id="af-douyin-url" value="${escapeHtml(account?.douyinUrl||'')}" placeholder="如：https://www.douyin.com/user/xxx"></div>
+        <div class="form-hint">填入后可一键跳转创作者主页</div>
       </div>
       <div class="modal__footer">
         <button class="btn btn--secondary" id="modal-cancel">取消</button>
@@ -562,7 +618,8 @@ function showAccountModal(account){
       name,
       niche:document.getElementById('af-niche').value.trim(),
       persona:document.getElementById('af-persona').value.trim(),
-      competitorUsernames:document.getElementById('af-competitors').value.split(',').map(s=>s.trim()).filter(Boolean)
+      competitorUsernames:document.getElementById('af-competitors').value.split(',').map(s=>s.trim()).filter(Boolean),
+      douyinUrl:document.getElementById('af-douyin-url').value.trim()
     };
     if(isEdit){
       Object.assign(account,data);
@@ -687,6 +744,75 @@ function showViralModal(compId){
   };
 }
 
+function showDiscoverModal(results){
+  const overlay=document.getElementById('modal-overlay');
+  const selected=new Set();
+  overlay.innerHTML=`
+    <div class="modal" style="max-width:520px">
+      <div class="modal__header">🤖 AI 发现的对标账号 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(${results.length}个)</span></div>
+      <div class="modal__body" style="padding:var(--space-md)">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:var(--space-md)">勾选想要添加的对标账号，支持多选</div>
+        <div class="discover-results">
+          ${results.map((r,i)=>`
+            <div class="discover-item" data-discover-index="${i}">
+              <div class="discover-item__check"></div>
+              <div class="discover-item__info">
+                <div class="discover-item__name">${escapeHtml(r.name)} ${r.followers?`<span style="color:var(--text-muted);font-weight:400;font-size:11px">${escapeHtml(r.followers)}</span>`:''}</div>
+                <div class="discover-item__meta">${escapeHtml(r.style||'')}${r.reason?` · ${escapeHtml(r.reason)}`:''}${r.niche?` · ${escapeHtml(r.niche)}`:''}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn--ghost btn--sm" id="modal-select-all">全选</button>
+        <button class="btn btn--secondary" id="modal-cancel">取消</button>
+        <button class="btn btn--primary" id="modal-save">添加到对标库</button>
+      </div>
+    </div>`;
+  overlay.hidden=false;
+  overlay.querySelector('#modal-cancel').onclick=()=>overlay.hidden=true;
+
+  // Toggle selection on click
+  overlay.querySelectorAll('.discover-item').forEach(el=>{
+    el.onclick=()=>{
+      const i=parseInt(el.dataset.discoverIndex);
+      if(selected.has(i)) selected.delete(i); else selected.add(i);
+      el.classList.toggle('selected',selected.has(i));
+      el.querySelector('.discover-item__check').textContent=selected.has(i)?'✓':'';
+    };
+  });
+
+  overlay.querySelector('#modal-select-all').onclick=()=>{
+    const all=selected.size===results.length;
+    overlay.querySelectorAll('.discover-item').forEach(el=>{
+      const i=parseInt(el.dataset.discoverIndex);
+      if(all){ selected.delete(i); el.classList.remove('selected'); el.querySelector('.discover-item__check').textContent=''; }
+      else{ selected.add(i); el.classList.add('selected'); el.querySelector('.discover-item__check').textContent='✓'; }
+    });
+    overlay.querySelector('#modal-select-all').textContent=all?'全选':'取消全选';
+  };
+
+  overlay.querySelector('#modal-save').onclick=()=>{
+    if(!selected.size){ toast('请至少选择一个账号','warning');return }
+    let added=0;
+    selected.forEach(i=>{
+      const r=results[i];
+      if(!state.competitors.some(c=>c.name===r.name)){
+        state.competitors.push({
+          id:uuid(), name:r.name, platform:'抖音', followers:r.followers||'', niche:r.niche||'',
+          style:r.style||'', reason:r.reason||'', viralVideos:[]
+        });
+        added++;
+      }
+    });
+    saveCompetitors();
+    renderCompetitors();
+    overlay.hidden=true;
+    toast(`已添加 ${added} 个对标账号`+(selected.size-added?'，'+(selected.size-added)+'个已存在':'') ,'success');
+  };
+}
+
 // ============ 8. CALENDAR RENDERER ============
 function renderCalendar(filterAccountId, filterStatus){
   const container=document.getElementById('calendar-content');
@@ -786,7 +912,7 @@ function renderSettings(){
   };
 
   document.getElementById('btn-export').onclick=()=>{
-    const data={ accounts:state.accounts, competitors:state.competitors, contentItems:state.contentItems, settings:state.settings, exportedAt:new Date().toISOString() };
+    const data={ accounts:state.accounts, competitors:state.competitors, contentItems:state.contentItems, trends:state.trends, settings:state.settings, exportedAt:new Date().toISOString() };
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=`content-factory-backup-${todayStr()}.json`;a.click();
@@ -808,8 +934,9 @@ function renderSettings(){
       state.accounts=data.accounts||[];
       state.competitors=data.competitors||[];
       state.contentItems=data.contentItems||[];
+      state.trends=data.trends||[];
       if(data.settings) state.settings={...state.settings,...data.settings};
-      saveAccounts();saveCompetitors();saveContent();saveSettings();
+      saveAccounts();saveCompetitors();saveContent();saveTrends();saveSettings();
       toast(`导入成功！${data.accounts.length}个账号，${data.contentItems.length}条内容`,'success');
       renderTab(currentTab);
     }catch(e){
@@ -829,6 +956,67 @@ function renderSettings(){
 }
 
 // ============ 10. DEEPSEEK API ============
+async function discoverTrends(){
+  const apiKey=state.settings.apiKey;
+  if(!apiKey){ toast('请先配置 API Key','warning');return null }
+  const niche=state.settings.defaultNiche||state.accounts[0]?.niche||'通用';
+  const messages=[
+    {role:'system',content:'你是抖音趋势分析师。找出当前热门话题、挑战赛、流行BGM。只返回JSON。'},
+    {role:'user',content:`分析"${niche}"赛道近期抖音热门趋势。找出：
+- 正在流行的挑战赛/话题标签
+- 最近爆火的BGM/音乐
+- 值得关注的流量趋势
+- 用户最近关心的热点话题
+
+返回10-15条，严格JSON格式：
+{"trends":[{"title":"热点标题/标签/话题/BGM名称","type":"topic|challenge|bgm|trend","description":"一句话说明为什么这个热点值得关注"}]}`}
+  ];
+  try{
+    const resp=await fetch(API_BASE,{
+      method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
+      body:JSON.stringify({model:API_MODEL,messages,temperature:0.9,max_tokens:2048,response_format:{type:'json_object'}})
+    });
+    if(!resp.ok) throw new Error('API 请求失败');
+    const data=await resp.json();
+    const parsed=JSON.parse(data.choices[0].message.content);
+    if(!parsed.trends||!Array.isArray(parsed.trends)) throw new Error('返回格式异常');
+    return parsed.trends;
+  }catch(e){
+    toast('热点发现失败: '+e.message,'error');
+    return null;
+  }
+}
+
+async function discoverCompetitors(){
+  const apiKey=state.settings.apiKey;
+  if(!apiKey){ toast('请先配置 API Key','warning');return null }
+  const niche=state.settings.defaultNiche||state.accounts[0]?.niche||'通用';
+  const messages=[
+    {role:'system',content:'你是抖音生态分析师。你精准找出各赛道值得关注的对标账号。只返回JSON。'},
+    {role:'user',content:`帮我在抖音"${niche}"赛道找出10-15个值得关注的对标/竞品账号。要求：
+- 覆盖头部大号、腰部账号、新锐账号三个层次
+- 每个账号给出：昵称、粉丝量级、内容风格/定位、为什么值得关注
+- 尽可能给出真实存在的抖音账号
+
+严格JSON格式返回（不要额外文字）：
+{"competitors":[{"name":"账号昵称","followers":"粉丝量级如50w","niche":"细分赛道","style":"内容风格描述","reason":"推荐理由"}]}`}
+  ];
+  try{
+    const resp=await fetch(API_BASE,{
+      method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
+      body:JSON.stringify({model:API_MODEL,messages,temperature:0.9,max_tokens:2048,response_format:{type:'json_object'}})
+    });
+    if(!resp.ok) throw new Error('API 请求失败');
+    const data=await resp.json();
+    const parsed=JSON.parse(data.choices[0].message.content);
+    if(!parsed.competitors||!Array.isArray(parsed.competitors)) throw new Error('返回格式异常');
+    return parsed.competitors;
+  }catch(e){
+    toast('对标发现失败: '+e.message,'error');
+    return null;
+  }
+}
+
 function buildAIPrompt(){
   const accounts=state.accounts;
   const competitors=state.competitors;
@@ -862,11 +1050,13 @@ function buildAIPrompt(){
     });
   }
 
+  const selectedTrends=state.trends.filter(t=>t.selected);
   userPrompt+=`\n请为每个账号生成1条今天的视频策划。要求：
 - 选题要有差异化角度，参考对标账号的爆款但不要抄袭
 - 脚本用口语化中文，适合口播
 - BGM 风格偏好: ${state.settings.defaultBgmStyle||'轻快'}
 ${state.settings.defaultNiche?`- 所有内容围绕赛道: ${state.settings.defaultNiche}`:''}
+${selectedTrends.length?`\n=== 本期热点（选题时可参考融入，不要硬套）===\n${selectedTrends.map(t=>`- ${t.title} (${t.type||'topic'}): ${t.description||''}`).join('\n')}`:''}
 
 请严格按以下JSON格式返回（不要额外文字）：
 {
@@ -1020,6 +1210,41 @@ function initHandlers(){
       if(acct&&await confirmDialog('删除账号',`确定删除「${acct.name}」吗？该账号的历史内容仍会保留。`)){
         state.accounts=state.accounts.filter(a=>a.id!==btn.dataset.id);
         saveAccounts();renderAccounts();toast('账号已删除','warning');
+      }
+    }
+
+    // AI discover competitors
+    if(action==='discover-competitors'){
+      btn.disabled=true;
+      const origText=btn.textContent;
+      btn.innerHTML='<span class="spinner"></span> AI 搜索中...';
+      const results=await discoverCompetitors();
+      btn.disabled=false;
+      btn.textContent=origText;
+      if(results&&results.length) showDiscoverModal(results);
+    }
+    // Toggle trend selection
+    if(action==='toggle-trend'){
+      const idx=parseInt(btn.dataset.index);
+      if(!isNaN(idx)&&state.trends[idx]){
+        state.trends[idx].selected=!state.trends[idx].selected;
+        saveTrends();
+        renderTrends();
+      }
+    }
+    // Refresh trends
+    if(action==='refresh-trends'){
+      btn.disabled=true;
+      const origText=btn.textContent;
+      btn.textContent='⏳ 分析中...';
+      const results=await discoverTrends();
+      btn.disabled=false;
+      btn.textContent=origText;
+      if(results&&results.length){
+        state.trends=results.map(t=>({...t,selected:false}));
+        saveTrends();
+        renderTrends();
+        toast(`发现 ${results.length} 个热点趋势`,'success');
       }
     }
 
