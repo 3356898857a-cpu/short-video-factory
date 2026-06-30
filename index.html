@@ -272,9 +272,9 @@ body{font-family:var(--font);font-size:15px;color:var(--text-primary);background
             </details>
             <div style="display:flex;align-items:center;gap:var(--space-sm);justify-content:center">
               <span style="font-size:13px;color:var(--text-secondary)">脚本时长:</span>
-              <button class="btn btn--sm btn--secondary script-len-btn active" data-len="30">30秒</button>
-              <button class="btn btn--sm btn--secondary script-len-btn" data-len="15">15秒</button>
-              <button class="btn btn--sm btn--secondary script-len-btn" data-len="60">60秒</button>
+              <button class="btn btn--sm btn--secondary script-len-btn active" data-action="set-script-len" data-len="30">30秒</button>
+              <button class="btn btn--sm btn--secondary script-len-btn" data-action="set-script-len" data-len="15">15秒</button>
+              <button class="btn btn--sm btn--secondary script-len-btn" data-action="set-script-len" data-len="60">60秒</button>
               <input type="hidden" id="script-length" value="30">
             </div>
           </div>
@@ -1230,7 +1230,7 @@ function initHandlers(){
 
     // Generate content
     // Script length toggle
-    if(btn.classList.contains('script-len-btn')){
+    if(action==='set-script-len'){
       document.querySelectorAll('.script-len-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('script-length').value=btn.dataset.len;
