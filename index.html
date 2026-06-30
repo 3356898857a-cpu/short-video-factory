@@ -750,12 +750,12 @@ function showViralModal(compId){
   };
 }
 
-function showDiscoverModal(results){
+function showDiscoverModal(results,source=''){
   const overlay=document.getElementById('modal-overlay');
   const selected=new Set();
   overlay.innerHTML=`
     <div class="modal" style="max-width:520px">
-      <div class="modal__header">🤖 AI 发现的对标账号 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(${results.length}个)</span></div>
+      <div class="modal__header">🤖 AI 发现的对标账号 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(${results.length}个${source?' · '+source:''})</span></div>
       <div class="modal__body" style="padding:var(--space-md)">
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:var(--space-md)">勾选想要添加的对标账号，支持多选</div>
         <div class="discover-results">
@@ -876,9 +876,17 @@ function renderSettings(){
       <div class="form-group">
         <label class="form-label">API Key</label>
         <input class="form-input" type="password" id="s-api-key" value="${escapeHtml(state.settings.apiKey||'')}" placeholder="sk-...">
-        <div class="form-hint">API Key 仅存储在浏览器本地，只发送给 DeepSeek 官方 API</div>
+        <div class="form-hint">用于AI内容生成，必填</div>
       </div>
       <button class="btn btn--primary" id="btn-save-settings">保存设置</button>
+    </div>
+    <div class="settings-block">
+      <h3>🔍 AnySearch API Key <span style="font-size:11px;color:var(--text-muted);font-weight:400">（可选）</span></h3>
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <input class="form-input" type="password" id="s-anysearch-key" value="${escapeHtml(state.settings.anysearchApiKey||'')}" placeholder="留空使用匿名访问（频率较低）">
+        <div class="form-hint"><a href="https://anysearch.com/console/api-keys" target="_blank" style="color:var(--info)">免费申请</a>，用于实时搜索对标账号和热点。不填也可用但频率受限</div>
+      </div>
     </div>
     <div class="settings-block">
       <h3>📝 默认偏好</h3>
@@ -911,6 +919,7 @@ function renderSettings(){
   document.getElementById('btn-save-settings').onclick=()=>{
     const apiKey=document.getElementById('s-api-key').value.trim();
     state.settings.apiKey=apiKey;
+    state.settings.anysearchApiKey=document.getElementById('s-anysearch-key').value.trim();
     state.settings.defaultNiche=document.getElementById('s-niche').value.trim();
     state.settings.defaultBgmStyle=document.getElementById('s-bgm').value.trim();
     saveSettings();
@@ -995,14 +1004,44 @@ async function discoverTrends(){
 
 async function discoverCompetitors(){
   const apiKey=state.settings.apiKey;
-  if(!apiKey){ toast('请先配置 API Key','warning');return null }
+  if(!apiKey){ toast('请先配置 DeepSeek API Key','warning');return null }
   const niche=state.settings.defaultNiche||state.accounts[0]?.niche||'通用';
+  const anysearchKey=state.settings.anysearchApiKey||'';
+
+  // Step 1: Search for real competitor accounts via AnySearch (real-time web)
+  let webResults=[];
+  try{
+    const queries=[
+      `抖音 ${niche} 推荐账号 值得关注 2025`,
+      `抖音 ${niche} 头部博主 热门账号`,
+      `${niche} 抖音 对标账号 竞品分析`
+    ];
+    const searchPromises=queries.map(q=>
+      fetch('https://api.anysearch.com/mcp',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',...(anysearchKey?{'Authorization':`Bearer ${anysearchKey}`}:{})},
+        body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'search',arguments:{query:q,max_results:5}},id:1})
+      }).then(r=>r.json()).then(d=>{
+        const results=d?.result?.content?.[0]?.results||d?.result?.results||[];
+        return results.map(r=>({title:r.title||'',url:r.url||'',snippet:r.snippet||r.description||''}));
+      }).catch(()=>[])
+    );
+    const allResults=await Promise.all(searchPromises);
+    webResults=[...new Set(allResults.flat().filter(r=>r.title).map(r=>JSON.stringify(r)))].map(r=>JSON.parse(r));
+  }catch(e){ console.log('AnySearch fallback:',e); }
+
+  // Step 2: Feed web results + niche to DeepSeek for intelligent structuring
+  let webContext='';
+  if(webResults.length){
+    webContext=`\n\n以下是实时搜索到的${niche}赛道相关账号和文章（${webResults.length}条），请基于这些真实信息推荐对标账号：\n`;
+    webResults.forEach((r,i)=>webContext+=`${i+1}. ${r.title}\n   ${r.snippet||''}\n   ${r.url||''}\n`);
+  }
+
   const messages=[
-    {role:'system',content:'你是抖音生态分析师。你精准找出各赛道值得关注的对标账号。只返回JSON。'},
-    {role:'user',content:`帮我在抖音"${niche}"赛道找出10-15个值得关注的对标/竞品账号。要求：
+    {role:'system',content:'你是抖音生态分析师。基于提供的实时搜索数据，精准推荐对标账号。只返回JSON。'},
+    {role:'user',content:`帮我在抖音"${niche}"赛道找出10-15个值得关注的对标/竞品账号。
 - 覆盖头部大号、腰部账号、新锐账号三个层次
-- 每个账号给出：昵称、粉丝量级、内容风格/定位、为什么值得关注
-- 尽可能给出真实存在的抖音账号
+- 每个账号给出：昵称、粉丝量级、内容风格/定位、为什么值得关注${webContext}
 
 严格JSON格式返回（不要额外文字）：
 {"competitors":[{"name":"账号昵称","followers":"粉丝量级如50w","niche":"细分赛道","style":"内容风格描述","reason":"推荐理由"}]}`}
@@ -1010,13 +1049,13 @@ async function discoverCompetitors(){
   try{
     const resp=await fetch(API_BASE,{
       method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
-      body:JSON.stringify({model:API_MODEL,messages,temperature:0.9,max_tokens:2048,response_format:{type:'json_object'}})
+      body:JSON.stringify({model:API_MODEL,messages,temperature:0.7,max_tokens:2048,response_format:{type:'json_object'}})
     });
     if(!resp.ok) throw new Error('API 请求失败');
     const data=await resp.json();
     const parsed=JSON.parse(data.choices[0].message.content);
     if(!parsed.competitors||!Array.isArray(parsed.competitors)) throw new Error('返回格式异常');
-    return parsed.competitors;
+    return {competitors:parsed.competitors,source:webResults.length?'实时搜索 + AI':'AI'};
   }catch(e){
     toast('对标发现失败: '+e.message,'error');
     return null;
@@ -1241,11 +1280,14 @@ function initHandlers(){
     if(action==='discover-competitors'){
       btn.disabled=true;
       const origText=btn.textContent;
-      btn.innerHTML='<span class="spinner"></span> AI 搜索中...';
-      const results=await discoverCompetitors();
+      btn.innerHTML='<span class="spinner"></span> 实时搜索中...';
+      const result=await discoverCompetitors();
       btn.disabled=false;
       btn.textContent=origText;
-      if(results&&results.length) showDiscoverModal(results);
+      if(result&&result.competitors&&result.competitors.length){
+        showDiscoverModal(result.competitors, result.source);
+        toast(`从${result.source}找到 ${result.competitors.length} 个对标账号`,'success');
+      }
     }
     // Toggle trend selection
     if(action==='toggle-trend'){
