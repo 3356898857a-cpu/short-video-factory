@@ -354,7 +354,7 @@ body{font-family:var(--font);font-size:15px;color:var(--text-primary);background
 // ============ 0. CONSTANTS ============
 const STATUS_FLOW = ['draft', 'filmed', 'editing', 'published'];
 const STATUS_LABELS = { draft:'待拍摄', filmed:'已拍摄', editing:'剪辑中', published:'已发布' };
-const STORAGE_KEYS = { ACCOUNTS:'svf_accounts', COMPETITORS:'svf_competitors', CONTENT:'svf_content', SETTINGS:'svf_settings', TRENDS:'svf_trends' };
+const STORAGE_KEYS = { ACCOUNTS:'svf_accounts', COMPETITORS:'svf_competitors', CONTENT:'svf_content', SETTINGS:'svf_settings', TRENDS:'svf_trends', ANALYTICS:'svf_analytics' };
 const API_BASE = 'https://api.deepseek.com/v1/chat/completions';
 const API_MODEL = 'deepseek-chat';
 const WEEKDAYS = ['周日','周一','周二','周三','周四','周五','周六'];
@@ -418,6 +418,7 @@ let state={
   competitors:[],
   contentItems:[],
   trends:[],
+  accountAnalytics:{},
   settings:{ apiKey:'', defaultNiche:'', defaultBgmStyle:'轻快' }
 };
 
@@ -426,6 +427,7 @@ function loadState(){
   state.competitors = Storage.load(STORAGE_KEYS.COMPETITORS) || [];
   state.contentItems = Storage.load(STORAGE_KEYS.CONTENT) || [];
   state.trends = Storage.load(STORAGE_KEYS.TRENDS) || [];
+  state.accountAnalytics = Storage.load(STORAGE_KEYS.ANALYTICS) || {};
   state.settings = Storage.load(STORAGE_KEYS.SETTINGS) || state.settings;
 }
 
@@ -433,6 +435,7 @@ function saveAccounts(){ Storage.save(STORAGE_KEYS.ACCOUNTS, state.accounts) }
 function saveCompetitors(){ Storage.save(STORAGE_KEYS.COMPETITORS, state.competitors) }
 function saveContent(){ Storage.save(STORAGE_KEYS.CONTENT, state.contentItems) }
 function saveTrends(){ Storage.save(STORAGE_KEYS.TRENDS, state.trends) }
+function saveAnalytics(){ Storage.save(STORAGE_KEYS.ANALYTICS, state.accountAnalytics) }
 function saveSettings(){ Storage.save(STORAGE_KEYS.SETTINGS, state.settings) }
 
 function getAccountById(id){ return state.accounts.find(a=>a.id===id) }
@@ -604,10 +607,13 @@ function renderAccounts(){
       <div class="account-card__info">
         <div class="account-card__name">${escapeHtml(a.name)}</div>
         <div class="account-card__meta">赛道: ${escapeHtml(a.niche||'未设置')} | 人设: ${escapeHtml(a.persona||'未设置')} ${a.videoCategory?`| 📹 ${escapeHtml(a.videoCategory)}`:''}</div>
+        ${a.douyinUrl?`<div class="account-card__meta">🎵 ${escapeHtml(a.douyinUrl)}</div>`:''}
         ${a.competitorUsernames?.length?`<div class="account-card__meta">对标: ${escapeHtml(a.competitorUsernames.join(' / '))}</div>`:''}
+        ${state.accountAnalytics?.[a.id]?`<div class="account-card__meta" style="color:var(--success)">📊 ${state.accountAnalytics[a.id].followers||''}粉丝 | ${state.accountAnalytics[a.id].videoCount||0}条视频 | 更新于${state.accountAnalytics[a.id].updatedAt?.slice(5)||''}</div>`:''}
       </div>
       <div class="account-card__actions">
-        ${a.douyinUrl?`<a href="${escapeHtml(a.douyinUrl)}" target="_blank" class="btn btn--sm btn--ghost" style="color:var(--info)">🎵 主页</a>`:''}
+        ${a.douyinUrl?`<a href="${escapeHtml(a.douyinUrl)}" target="_blank" class="btn btn--sm btn--ghost" style="color:var(--info)">🎵</a>`:''}
+        <button class="btn btn--sm btn--ghost" data-action="sync-account" data-id="${a.id}" ${!state.settings.tikhubApiKey?'disabled':''}>📊 同步</button>
         <button class="btn btn--sm btn--ghost" data-action="edit-account" data-id="${a.id}">编辑</button>
         <button class="btn btn--sm btn--danger" data-action="delete-account" data-id="${a.id}">删除</button>
       </div>
@@ -931,11 +937,26 @@ function renderSettings(){
     </div>
     <div class="settings-block">
       <h3>💾 数据备份</h3>
-      <div style="display:flex;gap:var(--space-md);flex-wrap:wrap">
-        <button class="btn btn--secondary" id="btn-export">📥 导出数据 (JSON)</button>
-        <button class="btn btn--secondary" id="btn-import-trigger" onclick="document.getElementById('import-file-input').click()">📤 导入数据 (JSON)</button>
+      <div style="display:flex;gap:var(--space-md);flex-wrap:wrap;margin-bottom:var(--space-md)">
+        <button class="btn btn--secondary" id="btn-export">📥 导出文件</button>
+        <button class="btn btn--secondary" id="btn-import-trigger" onclick="document.getElementById('import-file-input').click()">📤 导入文件</button>
       </div>
       <input type="file" id="import-file-input" accept=".json" style="display:none">
+      <details style="margin-top:var(--space-md)">
+        <summary style="cursor:pointer;font-size:13px;color:var(--text-secondary)">📱 跨设备快速转移（手机⇄电脑）</summary>
+        <div style="margin-top:var(--space-md)">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:var(--space-sm)">⚠️ 手机和电脑数据不互通，需要手动转移。在旧设备上复制同步码，在新设备粘贴。</div>
+          <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
+            <button class="btn btn--sm btn--secondary" id="btn-copy-sync-code">📋 复制同步码</button>
+          </div>
+          <div class="form-group">
+            <label class="form-label">或粘贴同步码</label>
+            <textarea class="form-textarea" id="sync-code-input" placeholder="粘贴从另一设备复制的同步码..." style="height:60px;font-size:11px"></textarea>
+          </div>
+          <button class="btn btn--sm btn--primary" id="btn-import-sync-code">📥 导入同步码</button>
+          <div id="sync-status" style="font-size:11px;margin-top:var(--space-sm)"></div>
+        </div>
+      </details>
     </div>
     <div class="settings-block danger-zone">
       <h3>⚠️ 危险操作</h3>
@@ -956,12 +977,43 @@ function renderSettings(){
   };
 
   document.getElementById('btn-export').onclick=()=>{
-    const data={ accounts:state.accounts, competitors:state.competitors, contentItems:state.contentItems, trends:state.trends, settings:state.settings, exportedAt:new Date().toISOString() };
+    const data={ accounts:state.accounts, competitors:state.competitors, contentItems:state.contentItems, trends:state.trends, accountAnalytics:state.accountAnalytics, settings:state.settings, exportedAt:new Date().toISOString() };
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=`content-factory-backup-${todayStr()}.json`;a.click();
     URL.revokeObjectURL(url);
     toast('数据已导出','success');
+  };
+
+  document.getElementById('btn-copy-sync-code').onclick=async ()=>{
+    const data={ accounts:state.accounts, competitors:state.competitors, contentItems:state.contentItems, trends:state.trends, accountAnalytics:state.accountAnalytics, settings:state.settings, v:1,t:Date.now()};
+    const code=btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+    try{
+      await navigator.clipboard.writeText(code);
+      toast('同步码已复制！在新设备粘贴导入','success');
+    }catch{
+      document.getElementById('sync-status').textContent='复制失败，请手动复制：'+code.slice(0,100)+'...';
+    }
+  };
+
+  document.getElementById('btn-import-sync-code').onclick=()=>{
+    const code=document.getElementById('sync-code-input').value.trim();
+    if(!code){ toast('请粘贴同步码','warning');return; }
+    try{
+      const data=JSON.parse(decodeURIComponent(escape(atob(code))));
+      if(!data.accounts||!data.v){ toast('同步码无效','error');return; }
+      const backup={accounts:state.accounts,competitors:state.competitors,contentItems:state.contentItems,settings:state.settings,backupAt:new Date().toISOString()};
+      Storage.save('svf_backup_before_import',backup);
+      state.accounts=data.accounts||[];state.competitors=data.competitors||[];state.contentItems=data.contentItems||[];
+      state.trends=data.trends||[];state.accountAnalytics=data.accountAnalytics||{};
+      if(data.settings) state.settings={...state.settings,...data.settings};
+      saveAccounts();saveCompetitors();saveContent();saveTrends();saveAnalytics();saveSettings();
+      document.getElementById('sync-status').textContent=`✅ 导入成功！${data.accounts.length}个账号，${data.contentItems.length}条内容`;
+      toast('数据导入成功','success');
+      renderTab(currentTab);
+    }catch(e){
+      document.getElementById('sync-status').textContent='❌ 同步码无效: '+e.message;
+    }
   };
 
   document.getElementById('import-file-input').onchange=async function(){
@@ -1235,8 +1287,24 @@ function buildAIPrompt(customTopic='',productInfo=null,scriptLen='30'){
   const recentItems=state.contentItems.filter(c=>c.date>=thirtyDaysAgo);
 
   let userPrompt='今天需要为以下账号各策划1条抖音短视频：\n\n';
+  // Include account analytics for optimization
+  const analytics=state.accountAnalytics||{};
+  let analyticsCtx='';
+  const hasAnalytics=accounts.some(a=>analytics[a.id]);
+  if(hasAnalytics){
+    analyticsCtx='\n📊 账号数据分析（请基于历史表现优化选题）：\n';
+    accounts.forEach(a=>{
+      const s=analytics[a.id];
+      if(s){
+        analyticsCtx+=`- ${a.name}: ${s.followers}粉丝 | 近15条视频均播放${s.avgPlays||'?'} | 均点赞${s.avgLikes||'?'}`;
+        if(s.bestVideo) analyticsCtx+=` | 最佳视频: "${s.bestVideo.desc?.slice(0,30)}" (${s.bestVideo.likes}赞)`;
+        analyticsCtx+=`\n  建议: ${s.avgPlays<1000?'该账号需要提升完播率和钩子吸引力':'保持并放大已验证的内容方向'}\n`;
+      }
+    });
+  }
   if(productInfo) userPrompt+=`📦 产品信息: ${productInfo.name}${productInfo.price?' | 价格: '+productInfo.price:''}${productInfo.desc?' | 卖点: '+productInfo.desc:''}\n请将产品自然植入脚本中，不要硬广念稿。\n\n`;
   userPrompt+=`⏱ 脚本时长: ${scriptLen}秒（口播约${Math.round(scriptLen*4.5)}字，请严格控制字数）\n\n`;
+  if(analyticsCtx) userPrompt+=analyticsCtx+'\n';
 
   accounts.forEach((a,i)=>{
     userPrompt+=`【账号${i+1}】名称: ${a.name}, 赛道: ${a.niche||'未设置'}, 人设: ${a.persona||'未设置'}`;
@@ -1449,6 +1517,57 @@ function initHandlers(){
     }
 
     // Add account
+    // Sync account data
+    if(action==='sync-account'){
+      const acct=state.accounts.find(a=>a.id===btn.dataset.id);
+      if(!acct) return;
+      if(!state.settings.tikhubApiKey){ toast('请先配置 TikHub API Key','warning');return }
+      btn.disabled=true;const orig=btn.textContent;btn.textContent='同步中...';
+      try{
+        // Fetch user profile via correct TikHub search endpoint
+        const username=acct.douyinUrl?.match(/user\/([^/?]+)/)?.[1]||acct.name;
+        const profResp=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},
+          body:JSON.stringify({keyword:username,offset:0,count:1})
+        }).then(r=>r.json()).catch(()=>null);
+        const user=profResp?.data?.data?.[0]||profResp?.data?.user_list?.[0];
+        // Also try to get user posts
+        let videos=[];
+        if(user?.sec_uid){
+          const vResp=await fetch(`https://api.tikhub.io/api/v1/douyin/app/v3/fetch_user_post_videos?sec_user_id=${user.sec_uid}&max_cursor=0&count=15`,{
+            headers:{'Authorization':`Bearer ${state.settings.tikhubApiKey}`}
+          }).then(r=>r.json()).catch(()=>null);
+          videos=vResp?.data?.aweme_list||vResp?.data?.data||[];
+        }
+        const stats={
+          followers:user?.follower_count?Math.floor(user.follower_count/10000)+'w':'?',
+          following:user?.following_count||0,
+          videoCount:user?.aweme_count||videos.length,
+          totalLikes:user?.total_favorited||0,
+          recentVideos:videos.slice(0,10).map(v=>({
+            desc:v.desc||v.title||'',plays:v.statistics?.play_count||0,likes:v.statistics?.digg_count||0,
+            comments:v.statistics?.comment_count||0,shares:v.statistics?.share_count||0,
+            duration:v.duration||0,createTime:new Date((v.create_time||0)*1000).toISOString().split('T')[0]
+          })),
+          updatedAt:new Date().toISOString()
+        };
+        // Calculate best performing video type
+        if(stats.recentVideos.length){
+          const best=stats.recentVideos.reduce((a,b)=>a.likes>b.likes?a:b);
+          stats.bestVideo=best;
+          stats.avgPlays=Math.floor(stats.recentVideos.reduce((s,v)=>s+v.plays,0)/stats.recentVideos.length);
+          stats.avgLikes=Math.floor(stats.recentVideos.reduce((s,v)=>s+v.likes,0)/stats.recentVideos.length);
+        }
+        state.accountAnalytics[acct.id]=stats;
+        saveAnalytics();
+        renderAccounts();
+        toast(`✅ ${acct.name} 数据已同步 (${stats.videoCount}条视频)`, 'success');
+      }catch(e){toast('同步失败: '+e.message,'error')}
+      btn.disabled=false;btn.textContent=orig;
+      return;
+    }
+
     if(action==='edit-account'){
       const acct=state.accounts.find(a=>a.id===btn.dataset.id);
       if(acct) showAccountModal(acct);
@@ -1563,42 +1682,52 @@ function initHandlers(){
     const status=document.getElementById('import-status');
     const raw=input.value.trim();
     if(!raw){ toast('请输入抖音主页链接或抖音号','warning');return; }
-    this.disabled=true;this.textContent='读取中...';
-
     if(!state.settings.tikhubApiKey){
-      status.textContent='请先在设置里配置 TikHub API Key';
-      this.disabled=false;this.textContent='导入';return;
+      status.textContent='❌ 请先在设置页配置 TikHub API Key（免费注册）';
+      return;
     }
+    this.disabled=true;this.textContent='读取中...';
+    status.textContent='⏳ 正在搜索...';
 
     try{
-      // Extract username from URL or use raw as username
       let username=raw;
       const urlMatch=raw.match(/douyin\.com\/user\/([^/?]+)/);
       if(urlMatch) username=urlMatch[1];
-      else{username=raw.replace('@','').replace(/^抖音号[:：]?\s*/,'').trim()}
+      else{username=raw.replace('@','').replace(/^抖音号[:：]?\s*/,'').trim();}
 
-      // Try TikHub user search to find account
-      const resp=await fetch(`https://api.tikhub.io/api/v1/douyin/creator/fetch_user_search?keyword=${encodeURIComponent(username)}&offset=0&count=1`,{
-        headers:{'Authorization':`Bearer ${state.settings.tikhubApiKey}`}
+      // Use correct TikHub endpoint: POST fetch_user_search_v2
+      const resp=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},
+        body:JSON.stringify({keyword:username,offset:0,count:3})
       });
       const data=await resp.json();
-      if(data?.data?.user_list?.length){
-        const u=data.data.user_list[0];
+      status.textContent=JSON.stringify(data).slice(0,200);
+
+      if(data?.data?.data?.length){
+        const u=data.data.data[0];
         const info={
-          name:u.nickname||username,
-          douyinUrl:`https://www.douyin.com/user/${u.unique_id||username}`,
+          name:u.nickname||u.unique_id||username,
+          douyinUrl:`https://www.douyin.com/user/${u.unique_id||u.sec_uid||username}`,
         };
-        if(u.signature) info.persona=u.signature.slice(0,50);
+        if(u.signature) info.persona=u.signature.slice(0,80);
         if(u.follower_count) info._followers=Math.floor(u.follower_count/10000)+'w';
         status.textContent=`✅ 已读取: ${info.name}${info._followers?' | '+info._followers+'粉丝':''}`;
-        // Auto-fill form
+        state.settings._importInfo=info;
+        showAccountModal(null,info);
+      }else if(data?.data?.user_list?.length){
+        const u=data.data.user_list[0];
+        const info={name:u.nickname||u.unique_id||username,douyinUrl:`https://www.douyin.com/user/${u.unique_id||username}`};
+        if(u.signature) info.persona=u.signature.slice(0,80);
+        if(u.follower_count) info._followers=Math.floor(u.follower_count/10000)+'w';
+        status.textContent=`✅ 已读取: ${info.name}${info._followers?' | '+info._followers+'粉丝':''}`;
         state.settings._importInfo=info;
         showAccountModal(null,info);
       }else{
-        status.textContent='未找到该账号，请检查后重试';
+        status.textContent='❌ 未找到，请检查链接或抖音号是否正确（需配置 TikHub Key）';
       }
     }catch(e){
-      status.textContent='读取失败: '+e.message;
+      status.textContent='❌ 请求失败: '+e.message;
     }
     this.disabled=false;this.textContent='导入';
   };
