@@ -1071,14 +1071,14 @@ function renderSettings(){
 }
 
 // ============ 10. DEEPSEEK API ============
-const TIKHUB_BASE='https://api.allorigins.win/raw?url='+encodeURIComponent('https://api.tikhub.io');
+const TIKHUB_BASE='https://api.tikhub.io';
 
 async function callTikHub(path,params={}){
   const key=state.settings.tikhubApiKey;
   if(!key) throw new Error('NO_TIKHUB_KEY');
-  const url=TIKHUB_BASE+encodeURIComponent(path);
-  const qs=Object.entries(params).map(([k,v])=>`${k}=${encodeURIComponent(v)}`).join('&');
-  const resp=await fetch(url+(qs?'&'+qs:''),{headers:{'Authorization':`Bearer ${key}`},signal:AbortSignal.timeout(15000)});
+  const url=new URL(TIKHUB_BASE+path);
+  Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
+  const resp=await fetch(url.toString(),{headers:{'Authorization':`Bearer ${key}`},signal:AbortSignal.timeout(15000)});
   if(!resp.ok) throw new Error(`TikHub ${resp.status}`);
   return resp.json();
 }
@@ -1546,7 +1546,7 @@ function initHandlers(){
         const uid=acct.douyinUrl?.match(/user\/([^/?]+)/)?.[1]||acct.name;
         let user=null,videos=[];
         if(state.settings.tikhubApiKey){
-          try{const r=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2'),{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},body:JSON.stringify({keyword:uid,offset:0,count:1})});const d=await r.json();user=d?.data?.data?.[0]||d?.data?.user_list?.[0];}catch(e){}
+          try{const r=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},body:JSON.stringify({keyword:uid,offset:0,count:1})});const d=await r.json();user=d?.data?.data?.[0]||d?.data?.user_list?.[0];}catch(e){try{const ak=state.settings.anysearchApiKey||'';const r2=await fetch('https://api.anysearch.com/mcp',{method:'POST',headers:{'Content-Type':'application/json',...(ak?{'Authorization':`Bearer ${ak}`}:{})},body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'extract',arguments:{url:acct.douyinUrl||`https://www.douyin.com/user/${uid}`}},id:1})});const d2=await r2.json();const t=d2?.result?.content||'';const fm=t.match(/(\d+\.?\d*[万亿w]?)\s*(?:粉丝|位粉丝)/g);if(fm)user={nickname:uid,follower_count_str:fm[0]||''};}catch(e2){}}
         }
         if(!user){try{const ak=state.settings.anysearchApiKey||'';const r=await fetch('https://api.anysearch.com/mcp',{method:'POST',headers:{'Content-Type':'application/json',...(ak?{'Authorization':`Bearer ${ak}`}:{})},body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'extract',arguments:{url:acct.douyinUrl||`https://www.douyin.com/user/${uid}`}},id:1})});const d=await r.json();const t=d?.result?.content||'';const fm=t.match(/(\\d+\\.?\\d*[万亿]?)\\s*(粉丝|获赞)/g);if(fm)user={nickname:uid,follower_count_str:fm[0]||''};}catch(e){}}
         const stats={followers:user?.follower_count_str||(user?.follower_count?Math.floor(user.follower_count/10000)+'w':'?'),videoCount:user?.aweme_count||videos.length,recentVideos:videos,updatedAt:new Date().toISOString()};
@@ -1684,41 +1684,38 @@ function initHandlers(){
     else if(raw.match(/v\.douyin\.com/)){username=raw;}
     else{username=raw.replace('@','').replace(/^抖音号[:：]?\s*/,'').trim();}
 
-    // Fast path: numeric ID → TikHub first, then fallback
+    // Fast path: numeric ID → AnySearch extract Douyin page
     if(/^\d{6,20}$/.test(username) || /^[A-Za-z0-9_-]{10,}$/.test(username)){
       const directUrl=`https://www.douyin.com/user/${username}`;
       let found=null;
-      // Primary: TikHub via CORS proxy
-      if(state.settings.tikhubApiKey){
-        try{status.textContent='⏳ TikHub 搜索中...';
-          const r=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2'),{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},body:JSON.stringify({keyword:username,offset:0,count:1})});
-          const d=await r.json();status.textContent='📡 TikHub 返回: '+JSON.stringify(d).slice(0,300);
-          const u=d?.data?.data?.[0]||d?.data?.user_list?.[0]||d?.data?.users?.[0]||d?.result?.users?.[0];
-          if(u){found={name:u.nickname||u.unique_id||username,douyinUrl:`https://www.douyin.com/user/${u.unique_id||u.sec_uid||username}`,persona:u.signature?.slice(0,80)||'',_followers:u.follower_count?Math.floor(u.follower_count/10000)+'w':''};}
-          else{status.textContent='❌ TikHub: 返回'+JSON.stringify(d).slice(0,250);}
-        }catch(e){status.textContent='❌ 请求失败(可能是CORS): '+e.message;}
-      }else{status.textContent='❌ 未配置 TikHub Key';this.disabled=false;this.textContent='导入';return;}
-      if(found){status.textContent=`✅ 已读取: ${found.name}${found._followers?' | '+found._followers+'粉丝':''}`;state.settings._importInfo=found;showAccountModal(null,found);this.disabled=false;this.textContent='导入';return;}
-      // Fallback: AnySearch page extract
-      status.textContent='⏳ AnySearch 搜索中...';
-      try{const ak=state.settings.anysearchApiKey||'';const r=await fetch('https://api.anysearch.com/mcp',{method:'POST',headers:{'Content-Type':'application/json',...(ak?{'Authorization':`Bearer ${ak}`}:{})},body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'extract',arguments:{url:directUrl}},id:1})});const d=await r.json();const t=(d?.result?.content||'').match(/<title>([^<]+)<\/title>/);if(t){const n=t[1].replace(/抖音/g,'').replace(/-/g,'').trim();if(n&&n.length<50)found={name:n,douyinUrl:directUrl,persona:'',_followers:''};}}catch(e){}
-      if(found){status.textContent=`✅ 已读取: ${found.name}`;state.settings._importInfo=found;showAccountModal(null,found);}
-      else{status.textContent='❌ 未找到。请确认抖音号正确且 TikHub Key 已配置';}
+      status.textContent='⏳ 通过 AnySearch 提取页面...';
+      try{const ak=state.settings.anysearchApiKey||'';
+        const r=await fetch('https://api.anysearch.com/mcp',{method:'POST',headers:{'Content-Type':'application/json',...(ak?{'Authorization':`Bearer ${ak}`}:{})},body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'extract',arguments:{url:directUrl}},id:1})});
+        const d=await r.json();const text=d?.result?.content||'';status.textContent='📡 AnySearch 返回长度: '+(text.length)+'字符';
+        // Parse page info
+        const tMatch=text.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const nickMatch=text.match(/"nickname"\s*:\s*"([^"]+)"/);
+        const fansMatch=text.match(/(\d+\.?\d*[万亿w]?)\s*(?:粉丝|位粉丝)/);
+        const sigMatch=text.match(/"signature"\s*:\s*"([^"]*)"/);
+        if(tMatch||nickMatch){found={name:(nickMatch?nickMatch[1]:'')||tMatch[1].replace(/抖音/g,'').replace(/-/g,'').trim().slice(0,50),douyinUrl:directUrl,persona:sigMatch?sigMatch[1].slice(0,80):'',_followers:fansMatch?fansMatch[1]:''};}
+      }catch(e){status.textContent='❌ AnySearch 失败: '+e.message;}
+      if(found&&found.name){status.textContent=`✅ 已读取: ${found.name}${found._followers?' | '+found._followers+'粉丝':''}`;state.settings._importInfo=found;showAccountModal(null,found);}
+      else{status.textContent='❌ 无法解析页面。AnySearch Key 是否已配置？';}
       this.disabled=false;this.textContent='导入';return;
     }
 
     status.textContent='⏳ 正在搜索: '+username.slice(0,30)+'...';
     let found=null;
 
-    // Try 1: TikHub via proxy
-    if(state.settings.tikhubApiKey){
-      try{status.textContent='⏳ TikHub 搜索中...';
-        const resp=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2'),{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},body:JSON.stringify({keyword:username,offset:0,count:3})});
-        const d=await resp.json();status.textContent='📡 TikHub: '+JSON.stringify(d).slice(0,200);
-        const u=d?.data?.data?.[0]||d?.data?.user_list?.[0]||d?.data?.users?.[0]||d?.result?.users?.[0];
-        if(u){found={name:u.nickname||u.unique_id||username,douyinUrl:`https://www.douyin.com/user/${u.unique_id||u.sec_uid||username}`,persona:u.signature?.slice(0,80)||'',_followers:u.follower_count?Math.floor(u.follower_count/10000)+'w':''};}
-        else{status.textContent='❌ TikHub: '+JSON.stringify(d).slice(0,250);}
-      }catch(e){status.textContent='❌ TikHub 失败: '+e.message;}
+    // Try 1: AnySearch extract (works without CORS issues)
+    if(state.settings.anysearchApiKey||true){
+      try{status.textContent='⏳ AnySearch 搜索...';
+        const ak=state.settings.anysearchApiKey||'';
+        const resp=await fetch('https://api.anysearch.com/mcp',{method:'POST',headers:{'Content-Type':'application/json',...(ak?{'Authorization':`Bearer ${ak}`}:{})},body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'search',arguments:{query:`${username} 抖音 douyin.com/user`,max_results:5}},id:1})});
+        const d=await resp.json();const results=d?.result?.content?.[0]?.results||d?.result?.results||[];
+        status.textContent='📡 AnySearch: 找到'+results.length+'条结果';
+        for(const r of results){const um=r.url?.match(/douyin\.com\/user\/([^/?]+)/);if(um){const uid=um[1];found={name:r.title?.replace(/抖音/g,'').replace(/-/g,'').trim().slice(0,50)||uid,douyinUrl:`https://www.douyin.com/user/${uid}`,persona:r.snippet?.slice(0,80)||'',_followers:''};break;}}
+      }catch(e){status.textContent='❌ AnySearch 失败: '+e.message;}
     }
 
     // Try 2: AnySearch (search Douyin user page directly)
