@@ -1684,25 +1684,28 @@ function initHandlers(){
     else if(raw.match(/v\.douyin\.com/)){username=raw;}
     else{username=raw.replace('@','').replace(/^抖音号[:：]?\s*/,'').trim();}
 
-    // Fast path: numeric ID → TikHub free demo API (no key needed, reads real Douyin data)
+    // Fast path: numeric ID → TikHub API direct (CORS enabled on TikHub)
     if(/^\d{6,20}$/.test(username) || /^[A-Za-z0-9_-]{10,}$/.test(username)){
       const directUrl=`https://www.douyin.com/user/${username}`;
       let found=null;
-      status.textContent='⏳ 搜索抖音账号...';
+      const key=state.settings.tikhubApiKey;
+      if(!key){status.textContent='❌ 请先在设置页配置 TikHub API Key';this.disabled=false;this.textContent='导入';return;}
+      status.textContent='⏳ TikHub 搜索中...';
       try{
-        const r=await fetch(`https://api.tikhub.io/api/v1/demo/douyin_search/app/general_search?keyword=${encodeURIComponent(username)}&offset=0&count=10`);
-        const d=await r.json();status.textContent='📡 API返回: code='+(d?.code||'?')+' 结果数='+(d?.data?.data?.length||0);
-        if(d?.code===200&&d?.data?.data?.length){
-          for(const item of d.data.data){
-            const a=item.aweme_info?.author;
-            if(a&&(a.short_id===username||a.uid===username)){
-              found={name:a.nickname||username,douyinUrl:`https://www.douyin.com/user/${a.uid}`,persona:a.signature?.slice(0,80)||'',_followers:''};
-              break;
-            }
+        const r=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},body:JSON.stringify({keyword:username,offset:0,count:5})});
+        const d=await r.json();
+        status.textContent='📡 返回: code='+(d?.code||d?.detail?.code||'?')+' items='+(d?.data?.data?.length||d?.data?.user_list?.length||0);
+        const items=d?.data?.data||d?.data?.user_list||[];
+        for(const u of items){
+          const info=u.user_info||u.author||u;
+          if(info.uid===username||info.short_id===username||info.unique_id===username){
+            found={name:info.nickname||username,douyinUrl:`https://www.douyin.com/user/${info.uid||info.unique_id||username}`,persona:info.signature?.slice(0,80)||'',_followers:info.follower_count?Math.floor(info.follower_count/10000)+'w':''};
+            break;
           }
-          if(!found){found={name:username,douyinUrl:directUrl,persona:'',_followers:''};status.textContent='⚠️ 找到视频但未匹配到此ID，已用ID构造链接';}
-        }else{found={name:username,douyinUrl:directUrl,persona:'',_followers:''};status.textContent='⚠️ API无结果，已用ID构造链接';}
-      }catch(e){found={name:username,douyinUrl:directUrl,persona:'',_followers:''};status.textContent='⚠️ 请求失败，已用ID构造链接';}
+        }
+        if(!found&&items.length>0){const u=items[0];const info=u.user_info||u.author||u;found={name:info.nickname||username,douyinUrl:`https://www.douyin.com/user/${info.uid||info.unique_id||username}`,persona:info.signature?.slice(0,80)||'',_followers:info.follower_count?Math.floor(info.follower_count/10000)+'w':''};}
+        if(!found){found={name:username,douyinUrl:directUrl,persona:'',_followers:''};status.textContent='⚠️ 未找到精确匹配，已构造链接';}
+      }catch(e){found={name:username,douyinUrl:directUrl,persona:'',_followers:''};status.textContent='⚠️ 请求失败('+e.message+')，已构造链接';}
       state.settings._importInfo=found;showAccountModal(null,found);
       this.disabled=false;this.textContent='导入';return;
     }
