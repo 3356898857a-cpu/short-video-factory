@@ -1682,52 +1682,58 @@ function initHandlers(){
     const status=document.getElementById('import-status');
     const raw=input.value.trim();
     if(!raw){ toast('请输入抖音主页链接或抖音号','warning');return; }
-    if(!state.settings.tikhubApiKey){
-      status.textContent='❌ 请先在设置页配置 TikHub API Key（免费注册）';
-      return;
-    }
     this.disabled=true;this.textContent='读取中...';
-    status.textContent='⏳ 正在搜索...';
+    let username=raw;
+    const urlMatch=raw.match(/douyin\.com\/user\/([^/?]+)/);
+    if(urlMatch) username=urlMatch[1];
+    else{username=raw.replace('@','').replace(/^抖音号[:：]?\s*/,'').trim();}
+    let found=null;
 
-    try{
-      let username=raw;
-      const urlMatch=raw.match(/douyin\.com\/user\/([^/?]+)/);
-      if(urlMatch) username=urlMatch[1];
-      else{username=raw.replace('@','').replace(/^抖音号[:：]?\s*/,'').trim();}
+    // Try 1: TikHub API (if key configured)
+    if(state.settings.tikhubApiKey){
+      try{
+        status.textContent='⏳ 通过 TikHub 搜索...';
+        const resp=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{
+          method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},
+          body:JSON.stringify({keyword:username,offset:0,count:3})
+        });const d=await resp.json();
+        const u=d?.data?.data?.[0]||d?.data?.user_list?.[0];
+        if(u){found={name:u.nickname||u.unique_id||username,douyinUrl:`https://www.douyin.com/user/${u.unique_id||u.sec_uid||username}`,persona:u.signature?.slice(0,80)||'',_followers:u.follower_count?Math.floor(u.follower_count/10000)+'w':''};}
+      }catch(e){console.log('TikHub import error:',e);}
+    }
 
-      // Use correct TikHub endpoint: POST fetch_user_search_v2
-      const resp=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},
-        body:JSON.stringify({keyword:username,offset:0,count:3})
-      });
-      const data=await resp.json();
-      status.textContent=JSON.stringify(data).slice(0,200);
+    // Try 2: AnySearch (search Douyin user page directly)
+    if(!found){
+      try{
+        status.textContent='⏳ 通过 AnySearch 搜索...';
+        const anyKey=state.settings.anysearchApiKey||'';
+        const resp=await fetch('https://api.anysearch.com/mcp',{
+          method:'POST',headers:{'Content-Type':'application/json',...(anyKey?{'Authorization':`Bearer ${anyKey}`}:{})},
+          body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'search',arguments:{query:`site:douyin.com ${username}`,max_results:3}},id:1})
+        });const d=await resp.json();
+        const results=d?.result?.content?.[0]?.results||d?.result?.results||[];
+        if(results.length){
+          const r=results[0];found={name:username,douyinUrl:r.url||`https://www.douyin.com/user/${username}`,persona:r.snippet?.slice(0,80)||''};
+        }
+      }catch(e){console.log('AnySearch import error:',e);}
+    }
 
-      if(data?.data?.data?.length){
-        const u=data.data.data[0];
-        const info={
-          name:u.nickname||u.unique_id||username,
-          douyinUrl:`https://www.douyin.com/user/${u.unique_id||u.sec_uid||username}`,
-        };
-        if(u.signature) info.persona=u.signature.slice(0,80);
-        if(u.follower_count) info._followers=Math.floor(u.follower_count/10000)+'w';
-        status.textContent=`✅ 已读取: ${info.name}${info._followers?' | '+info._followers+'粉丝':''}`;
-        state.settings._importInfo=info;
-        showAccountModal(null,info);
-      }else if(data?.data?.user_list?.length){
-        const u=data.data.user_list[0];
-        const info={name:u.nickname||u.unique_id||username,douyinUrl:`https://www.douyin.com/user/${u.unique_id||username}`};
-        if(u.signature) info.persona=u.signature.slice(0,80);
-        if(u.follower_count) info._followers=Math.floor(u.follower_count/10000)+'w';
-        status.textContent=`✅ 已读取: ${info.name}${info._followers?' | '+info._followers+'粉丝':''}`;
-        state.settings._importInfo=info;
-        showAccountModal(null,info);
-      }else{
-        status.textContent='❌ 未找到，请检查链接或抖音号是否正确（需配置 TikHub Key）';
-      }
-    }catch(e){
-      status.textContent='❌ 请求失败: '+e.message;
+    // Try 3: DeepSeek (last resort)
+    if(!found&&state.settings.apiKey){
+      try{
+        status.textContent='⏳ 通过 AI 搜索...';
+        const resp=await fetch(API_BASE,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.apiKey}`},body:JSON.stringify({model:API_MODEL,messages:[{role:'user',content:`搜索抖音用户"${username}"的信息，返回JSON:{"name":"昵称","followers":"粉丝数"}`}],temperature:0.3,max_tokens:200,response_format:{type:'json_object'}})});
+        const d=await resp.json();const p=JSON.parse(d.choices[0].message.content);
+        if(p.name) found={name:p.name,douyinUrl:`https://www.douyin.com/user/${username}`,persona:'',_followers:p.followers||''};
+      }catch(e){console.log('DeepSeek import error:',e);}
+    }
+
+    if(found){
+      status.textContent=`✅ 已读取: ${found.name}${found._followers?' | '+found._followers+'粉丝':''}`;
+      state.settings._importInfo=found;
+      showAccountModal(null,found);
+    }else{
+      status.textContent='❌ 未找到。建议: 1) 检查链接是否正确 2) 去设置页配置 TikHub API Key（免费注册后可直连抖音搜索）';
     }
     this.disabled=false;this.textContent='导入';
   };
