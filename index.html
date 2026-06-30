@@ -1690,22 +1690,21 @@ function initHandlers(){
       let found=null;
       const key=state.settings.tikhubApiKey;
       if(!key){status.textContent='❌ 请先在设置页配置 TikHub API Key';this.disabled=false;this.textContent='导入';return;}
-      status.textContent='⏳ TikHub 搜索中...';
-      try{
-        const r=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},body:JSON.stringify({keyword:username,offset:0,count:5})});
-        const d=await r.json();
-        status.textContent='📡 返回: code='+(d?.code||d?.detail?.code||'?')+' items='+(d?.data?.data?.length||d?.data?.user_list?.length||0);
+      status.textContent='⏳ 搜索中...';
+      const tikhubUrl='https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2';
+      const body=JSON.stringify({keyword:username,offset:0,count:5});
+      const headers={'Content-Type':'application/json','Authorization':`Bearer ${key}`};
+      // Try direct first, then local proxy
+      let d=null;
+      try{d=await(await fetch(tikhubUrl,{method:'POST',headers,body})).json();}catch(e){}
+      if(!d||d.detail){try{d=await(await fetch('http://localhost:8765/'+tikhubUrl,{method:'POST',headers,body})).json();status.textContent='📡 通过本地代理连接 TikHub...';}catch(e){}}
+      if(d&&!d.detail){
         const items=d?.data?.data||d?.data?.user_list||[];
-        for(const u of items){
-          const info=u.user_info||u.author||u;
-          if(info.uid===username||info.short_id===username||info.unique_id===username){
-            found={name:info.nickname||username,douyinUrl:`https://www.douyin.com/user/${info.uid||info.unique_id||username}`,persona:info.signature?.slice(0,80)||'',_followers:info.follower_count?Math.floor(info.follower_count/10000)+'w':''};
-            break;
-          }
-        }
+        status.textContent='📡 返回 '+items.length+' 个结果';
+        for(const u of items){const info=u.user_info||u.author||u;if(info.uid===username||info.short_id===username||info.unique_id===username){found={name:info.nickname||username,douyinUrl:`https://www.douyin.com/user/${info.uid||info.unique_id||username}`,persona:info.signature?.slice(0,80)||'',_followers:info.follower_count?Math.floor(info.follower_count/10000)+'w':''};break;}}
         if(!found&&items.length>0){const u=items[0];const info=u.user_info||u.author||u;found={name:info.nickname||username,douyinUrl:`https://www.douyin.com/user/${info.uid||info.unique_id||username}`,persona:info.signature?.slice(0,80)||'',_followers:info.follower_count?Math.floor(info.follower_count/10000)+'w':''};}
-        if(!found){found={name:username,douyinUrl:directUrl,persona:'',_followers:''};status.textContent='⚠️ 未找到精确匹配，已构造链接';}
-      }catch(e){found={name:username,douyinUrl:directUrl,persona:'',_followers:''};status.textContent='⚠️ 请求失败('+e.message+')，已构造链接';}
+      }
+      if(!found){found={name:username,douyinUrl:directUrl,persona:'',_followers:''};status.textContent='⚠️ 无法连接 TikHub，请运行本地代理，已构造链接';}
       state.settings._importInfo=found;showAccountModal(null,found);
       this.disabled=false;this.textContent='导入';return;
     }
