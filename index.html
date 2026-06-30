@@ -903,7 +903,15 @@ function renderCalendar(filterAccountId, filterStatus){
 // ============ 9. SETTINGS RENDERER ============
 function renderSettings(){
   const container=document.getElementById('settings-content');
+  const ds=state.settings.apiKey;
+  const as=state.settings.anysearchApiKey;
+  const th=state.settings.tikhubApiKey;
   container.innerHTML=`
+    <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md) var(--space-xl);margin-bottom:var(--space-lg);font-size:12px;display:flex;flex-wrap:wrap;gap:var(--space-md);justify-content:center">
+      <span>DeepSeek: ${ds?'✅':'❌'}</span>
+      <span>AnySearch: ${as?'✅':'⚠️'}</span>
+      <span>TikHub: ${th?'✅':'❌ 未配置'}</span>
+    </div>
     <div class="settings-block">
       <h3>🔑 DeepSeek API Key</h3>
       <div class="form-group">
