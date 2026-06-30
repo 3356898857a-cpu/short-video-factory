@@ -906,6 +906,14 @@ function renderSettings(){
       </div>
     </div>
     <div class="settings-block">
+      <h3>🎵 TikHub API Key <span style="font-size:11px;color:var(--text-muted);font-weight:400">（推荐）</span></h3>
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <input class="form-input" type="password" id="s-tikhub-key" value="${escapeHtml(state.settings.tikhubApiKey||'')}" placeholder="留空使用 AnySearch 兜底">
+        <div class="form-hint">⭐ <a href="https://user.tikhub.io/users/signup?referral_code=1wRL8eQk" target="_blank" style="color:var(--info)">免费注册</a>，每日签到送额度，直接调抖音真实 API。注册后用邀请码 1wRL8eQk 可获 $2 额度。</div>
+      </div>
+    </div>
+    <div class="settings-block">
       <h3>📝 默认偏好</h3>
       <div class="form-row">
         <div class="form-group">
@@ -937,6 +945,7 @@ function renderSettings(){
     const apiKey=document.getElementById('s-api-key').value.trim();
     state.settings.apiKey=apiKey;
     state.settings.anysearchApiKey=document.getElementById('s-anysearch-key').value.trim();
+    state.settings.tikhubApiKey=document.getElementById('s-tikhub-key').value.trim();
     state.settings.defaultNiche=document.getElementById('s-niche').value.trim();
     state.settings.defaultBgmStyle=document.getElementById('s-bgm').value.trim();
     saveSettings();
@@ -988,23 +997,67 @@ function renderSettings(){
 }
 
 // ============ 10. DEEPSEEK API ============
+const TIKHUB_BASE='https://api.tikhub.io';
+
+async function callTikHub(path,params={}){
+  const key=state.settings.tikhubApiKey;
+  if(!key) throw new Error('NO_TIKHUB_KEY');
+  const url=new URL(TIKHUB_BASE+path);
+  Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
+  const resp=await fetch(url.toString(),{headers:{'Authorization':`Bearer ${key}`},signal:AbortSignal.timeout(15000)});
+  if(!resp.ok) throw new Error(`TikHub ${resp.status}`);
+  return resp.json();
+}
+
 async function discoverTrends(){
   const apiKey=state.settings.apiKey;
   if(!apiKey){ toast('请先配置 API Key','warning');return null }
   const niche=state.settings.defaultNiche||state.accounts[0]?.niche||'通用';
-  const anysearchKey=state.settings.anysearchApiKey||'';
   const broadMap={卤水:'美食',熟食:'美食',小吃:'美食',烘焙:'美食',火锅:'美食',烧烤:'美食',奶茶:'美食',咖啡:'美食',护肤:'美妆',彩妆:'美妆',女装:'穿搭',男装:'穿搭'};
   const broadNiche=broadMap[niche]||niche;
 
-  // Step 1: Search for real Douyin trends via AnySearch
+  // Try TikHub first (real Douyin data)
+  if(state.settings.tikhubApiKey){
+    try{
+      const [hotRes,musicRes]=await Promise.all([
+        callTikHub('/api/v1/douyin/web/fetch_hot_search_result').catch(()=>null),
+        callTikHub('/api/v1/douyin/app/v3/fetch_music_hot_search_list').catch(()=>null)
+      ]);
+      let trends=[];
+      // Parse hot search results
+      if(hotRes?.data?.word_list){
+        hotRes.data.word_list.slice(0,20).forEach(w=>{
+          trends.push({title:w.word||w.title||'',type:'topic',description:`热度: ${w.hot_value||'?'} | 当前抖音热搜`});
+        });
+      }
+      if(hotRes?.data?.billboard_data){
+        hotRes.data.billboard_data.slice(0,20).forEach(w=>{
+          trends.push({title:w.word||w.title||'',type:'trend',description:'抖音热榜'});
+        });
+      }
+      // Parse music hot search
+      if(musicRes?.data?.music_list){
+        musicRes.data.music_list.slice(0,10).forEach(m=>{
+          trends.push({title:m.music_name||m.title||'',type:'bgm',description:`热度: ${m.hot_value||'?'} | 抖音热门BGM`});
+        });
+      }
+      if(trends.length>5){
+        // Deduplicate
+        const seen=new Set();
+        return trends.filter(t=>t.title&&t.title.length>1&&!seen.has(t.title)&&seen.add(t.title)).slice(0,15);
+      }
+    }catch(e){console.log('TikHub trend error, falling back:',e);}
+  }
+
+  // Fallback: AnySearch (real-time web search for Douyin trends)
+  const anysearchKey=state.settings.anysearchApiKey||'';
   let webResults=[];
   try{
     const queries=[
       `抖音热搜榜 今天 ${new Date().getFullYear()} 热点话题`,
-      `抖音${broadNiche} 热门话题 趋势 2026`,
-      `抖音 最新BGM 热门音乐 推荐 2026`,
-      `抖音热搜 今日 排行 热点`,
-      `${broadNiche} 抖音 热门挑战 话题标签 2026`
+      `抖音${broadNiche} 热门话题 趋势`,
+      `抖音 最新BGM 热门音乐 推荐`,
+      `抖音热搜 今日 排行 热点`
     ];
     const promises=queries.map((q,i)=>
       fetch('https://api.anysearch.com/mcp',{
@@ -1021,52 +1074,61 @@ async function discoverTrends(){
     webResults=all.flat().filter(r=>r.title&&r.title.length>3&&!seen.has(r.title)&&seen.add(r.title));
   }catch(e){console.log('AnySearch trend error:',e);}
 
-  // Step 2: Feed to DeepSeek
   let ctx='';
   if(webResults.length){
-    ctx=`\n📡 实时搜索到以下抖音趋势信息（${webResults.length}条），请基于这些提取真实热点：\n`;
+    ctx=`\n📡 实时搜索到以下趋势信息（${webResults.length}条）：\n`;
     webResults.slice(0,20).forEach((r,i)=>ctx+=`${i+1}. ${r.title}\n   ${r.snippet?.slice(0,150)||''}\n`);
-  }else{
-    ctx=`\n请根据你对抖音的了解列出当前${broadNiche}赛道可能的热门话题。如果不够确定，宁缺毋滥。`;
-  }
+  }else{ctx=`\n请列出${broadNiche}赛道当前可能的热门话题。不确定的宁缺毋滥。`;}
 
   const messages=[
-    {role:'system',content:'你是抖音热搜分析师。基于实时数据提取当前真实的热门话题、挑战赛、BGM。不确定的不列。只返回JSON。'},
-    {role:'user',content:`找出抖音"${broadNiche}"赛道当前最热的话题/挑战/BGM（${niche!==broadNiche?'我们做"'+niche+'"，但可以参考整个'+broadNiche+'大类的热点':''}）。
-
-要求：基于实时搜索数据，列出真实的热点，不要编造。${ctx}
-
-返回10-15条，严格JSON：
-{"trends":[{"title":"热点话题/标签/BGM名称","type":"topic|challenge|bgm|trend","description":"说明为什么火，如何借势"}]}`}
+    {role:'system',content:'你是抖音热搜分析师。基于数据提取真实热搜、挑战赛、BGM。不确定的不列。只返回JSON。'},
+    {role:'user',content:`找出抖音"${broadNiche}"赛道当前最热的话题/挑战/BGM。${ctx}
+返回10-15条，严格JSON：{"trends":[{"title":"话题/BGM名称","type":"topic|challenge|bgm|trend","description":"为什么火"}]}`}
   ];
   try{
-    const resp=await fetch(API_BASE,{
-      method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
-      body:JSON.stringify({model:API_MODEL,messages,temperature:0.7,max_tokens:2048,response_format:{type:'json_object'}})
-    });
-    if(!resp.ok) throw new Error('API 请求失败');
-    const data=await resp.json();
-    const content=data.choices[0].message.content;
-    let parsed;
-    try{parsed=JSON.parse(content)}catch{const m=content.match(/\{[\s\S]*\}/);if(m)parsed=JSON.parse(m[0]);else throw new Error('格式异常');}
-    if(!parsed.trends||!Array.isArray(parsed.trends)) throw new Error('格式异常');
-    return parsed.trends.filter(t=>t.title&&t.title.length>1);
-  }catch(e){
-    toast('热点发现失败: '+e.message,'error');
-    return null;
-  }
+    const resp=await fetch(API_BASE,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:API_MODEL,messages,temperature:0.7,max_tokens:2048,response_format:{type:'json_object'}})});
+    if(!resp.ok) throw new Error('请求失败');
+    const data=await resp.json();const content=data.choices[0].message.content;
+    let parsed;try{parsed=JSON.parse(content)}catch{const m=content.match(/\{[\s\S]*\}/);if(m)parsed=JSON.parse(m[0]);else throw new Error('格式异常');}
+    return (parsed.trends||[]).filter(t=>t.title);
+  }catch(e){toast('热点发现失败: '+e.message,'error');return null;}
 }
 
 async function discoverCompetitors(){
   const apiKey=state.settings.apiKey;
   if(!apiKey){ toast('请先配置 DeepSeek API Key','warning');return null }
   const niche=state.settings.defaultNiche||state.accounts[0]?.niche||'通用';
-  // Derive broad category
   const broadMap={卤水:'美食',熟食:'美食',小吃:'美食',烘焙:'美食',火锅:'美食',烧烤:'美食',奶茶:'美食',咖啡:'美食',卤味:'美食',快餐:'美食',中餐:'美食',西餐:'美食',日料:'美食',韩餐:'美食',甜点:'美食',面食:'美食',海鲜:'美食',烤肉:'美食',串串:'美食',麻辣烫:'美食',凉皮:'美食',炸鸡:'美食',轻食:'美食',螺蛳粉:'美食',米粉:'美食',饺子:'美食',包子:'美食',豆腐:'美食',腌菜:'美食',腊味:'美食',卤菜:'美食',凉菜:'美食',私房菜:'美食',家常菜:'美食',探店:'美食',吃播:'美食',美食:'美食',护肤:'美妆',彩妆:'美妆',美发:'美妆',美甲:'美妆',女装:'穿搭',男装:'穿搭',童装:'母婴',家居:'家居',数码:'科技',汽车:'汽车',健身:'运动',减肥:'健康',旅游:'旅行',摄影:'摄影',萌宠:'宠物',房产:'房产',教育:'教育',财经:'财经',三农:'三农'};
   const broadNiche=broadMap[niche]||niche;
   const anysearchKey=state.settings.anysearchApiKey||'';
 
-  // Step 1: Targeted search for real Douyin account lists from multiple sources
+  // Try TikHub first (real Douyin user search)
+  if(state.settings.tikhubApiKey){
+    try{
+      const searchTerms=[broadNiche,niche];
+      let allUsers=[];
+      for(const term of searchTerms){
+        const resp=await callTikHub('/api/v1/douyin/search/fetch_user_search_v2',{}).catch(()=>null);
+        // Try the creator search endpoint
+        const resp2=await callTikHub('/api/v1/douyin/creator/fetch_user_search',{keyword:term,offset:0,count:10}).catch(()=>null);
+        if(resp2?.data?.user_list){
+          resp2.data.user_list.forEach(u=>{
+            allUsers.push({
+              name:u.nickname||u.unique_id||'',
+              followers:u.follower_count?`${Math.floor(u.follower_count/10000)}w`:'',
+              niche:niche,style:u.signature||'',reason:'抖音真实搜索'
+            });
+          });
+        }
+      }
+      if(allUsers.length>=5){
+        const seen=new Set();
+        return {competitors:allUsers.filter(u=>u.name&&!seen.has(u.name)&&seen.add(u.name)).slice(0,15),source:'TikHub 抖音直接搜索'};
+      }
+    }catch(e){console.log('TikHub competitor error, falling back:',e);}
+  }
+
+  // Fallback: AnySearch (real-time web search for account lists)
   let webResults=[];
   try{
     const yr=new Date().getFullYear();
