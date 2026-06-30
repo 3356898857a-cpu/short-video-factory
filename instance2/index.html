@@ -1,0 +1,1586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>短视频内容工厂</title>
+<style>
+/* ============= CSS Reset & Variables ============= */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-primary:#0f0f0f; --bg-secondary:#1a1a1a; --bg-tertiary:#242424;
+  --bg-elevated:#2a2a2a; --border:#333; --border-light:#3a3a3a;
+  --text-primary:#f0f0f0; --text-secondary:#a0a0a0; --text-muted:#666;
+  --accent:#7c5cfc; --accent-hover:#9478ff; --accent-glow:rgba(124,92,252,0.25);
+  --success:#00b894; --warning:#fdcb6e; --danger:#e17055; --info:#74b9ff;
+  --status-draft:#636e72; --status-filmed:#fdcb6e; --status-editing:#74b9ff; --status-published:#00b894;
+  --space-xs:4px; --space-sm:8px; --space-md:12px; --space-lg:16px; --space-xl:24px; --space-2xl:32px; --space-3xl:48px;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --radius-sm:6px; --radius-md:10px; --radius-lg:14px; --radius-full:999px;
+  --shadow-sm:0 1px 3px rgba(0,0,0,0.4); --shadow-md:0 4px 12px rgba(0,0,0,0.5);
+  --shadow-lg:0 8px 24px rgba(0,0,0,0.6); --shadow-glow:0 0 16px var(--accent-glow);
+  --transition:200ms ease; --sidebar-w:220px; --nav-h:64px;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font);font-size:15px;color:var(--text-primary);background:var(--bg-primary);-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+
+/* ============= Scrollbar ============= */
+::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ============= App Layout ============= */
+.app-layout{display:flex;flex-direction:column;height:100vh}
+.main-content{flex:1;overflow-y:auto;padding:var(--space-lg) var(--space-lg) calc(var(--nav-h) + var(--space-xl));-webkit-overflow-scrolling:touch}
+
+/* ============= Tab Bar (Mobile Bottom) ============= */
+.tab-bar{position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);display:flex;justify-content:space-around;align-items:center;background:var(--bg-secondary);border-top:1px solid var(--border);z-index:100;padding-bottom:env(safe-area-inset-bottom,0)}
+.tab-btn{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;color:var(--text-muted);font-size:10px;cursor:pointer;padding:var(--space-sm) var(--space-md);transition:color var(--transition);min-width:56px;-webkit-tap-highlight-color:transparent}
+.tab-btn.active{color:var(--accent)}
+.tab-btn svg{width:22px;height:22px}
+.tab-btn span{line-height:1}
+
+/* ============= Panel ============= */
+.tab-panel{display:block}.tab-panel[hidden]{display:none}
+.panel-header{text-align:center;padding:var(--space-xl) 0 var(--space-2xl)}
+.panel-header h1{font-size:var(--font-size-2xl,24px);font-weight:700;margin-bottom:var(--space-xs)}
+.panel-subtitle{color:var(--text-secondary);font-size:13px}
+
+/* ============= Buttons ============= */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-sm);padding:var(--space-md) var(--space-xl);border:none;border-radius:var(--radius-md);font-size:14px;font-weight:600;cursor:pointer;transition:all var(--transition);white-space:nowrap;-webkit-tap-highlight-color:transparent}
+.btn:active{transform:scale(0.97)}
+.btn--primary{background:var(--accent);color:#fff}
+.btn--primary:hover{background:var(--accent-hover);box-shadow:var(--shadow-glow)}
+.btn--secondary{background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border)}
+.btn--secondary:hover{background:var(--bg-elevated)}
+.btn--danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}
+.btn--danger:hover{background:rgba(225,112,85,0.1)}
+.btn--ghost{background:transparent;color:var(--text-secondary);padding:var(--space-sm) var(--space-md)}
+.btn--ghost:hover{color:var(--text-primary)}
+.btn--sm{padding:var(--space-xs) var(--space-md);font-size:12px;border-radius:var(--radius-sm)}
+.btn--lg{padding:var(--space-lg) var(--space-3xl);font-size:16px;border-radius:var(--radius-lg)}
+.btn--icon{padding:var(--space-sm);min-width:36px;min-height:36px;border-radius:var(--radius-full)}
+.btn:disabled{opacity:0.5;pointer-events:none}
+
+/* ============= Cards ============= */
+.card-grid{display:flex;flex-direction:column;gap:var(--space-lg);max-width:720px;margin:0 auto}
+.card{background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:border-color var(--transition)}
+.card:hover{border-color:var(--border-light)}
+.card__header{display:flex;align-items:center;justify-content:space-between;padding:var(--space-lg);border-bottom:1px solid var(--border)}
+.card__header-left{display:flex;align-items:center;gap:var(--space-sm)}
+.card__account-avatar{width:36px;height:36px;border-radius:var(--radius-full);background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0}
+.card__account-name{font-weight:600;font-size:15px}
+.card__account-niche{font-size:11px;color:var(--text-muted)}
+.card__body{padding:var(--space-lg)}
+.card__section{margin-bottom:var(--space-lg)}
+.card__section:last-child{margin-bottom:0}
+.card__label{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:var(--space-sm);display:flex;align-items:center;gap:var(--space-xs)}
+.card__topic{font-size:18px;font-weight:700;margin-bottom:var(--space-sm);line-height:1.3}
+.card__reasoning{font-size:12px;color:var(--text-secondary);margin-bottom:var(--space-md);padding:var(--space-sm) var(--space-md);background:var(--bg-tertiary);border-radius:var(--radius-sm);line-height:1.5}
+.script-box{background:var(--bg-tertiary);border-radius:var(--radius-md);padding:var(--space-lg);position:relative}
+.script-box__section{margin-bottom:var(--space-md)}
+.script-box__section:last-child{margin-bottom:0}
+.script-box__tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:var(--radius-full);margin-bottom:var(--space-xs)}
+.script-box__tag--hook{background:rgba(253,203,110,0.2);color:var(--warning)}
+.script-box__tag--body{background:rgba(116,185,255,0.2);color:var(--info)}
+.script-box__tag--cta{background:rgba(0,184,148,0.2);color:var(--success)}
+.script-box__text{font-size:14px;line-height:1.7;color:var(--text-primary)}
+.copy-btn{position:absolute;top:var(--space-md);right:var(--space-md);background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-secondary);padding:var(--space-xs) var(--space-sm);border-radius:var(--radius-sm);font-size:11px;cursor:pointer;transition:all var(--transition);display:flex;align-items:center;gap:4px}
+.copy-btn:hover{color:var(--text-primary);border-color:var(--accent)}
+.copy-btn.copied{color:var(--success);border-color:var(--success)}
+.bgm-tag{display:inline-flex;align-items:center;gap:var(--space-xs);padding:var(--space-sm) var(--space-md);background:var(--bg-tertiary);border-radius:var(--radius-full);font-size:13px}
+.bgm-tag .note{font-size:16px}
+.ref-link{display:inline-flex;align-items:center;gap:var(--space-xs);padding:var(--space-xs) var(--space-sm);background:var(--bg-tertiary);border-radius:var(--radius-full);font-size:12px;color:var(--info);text-decoration:none;margin-right:var(--space-sm);margin-bottom:var(--space-sm)}
+.ref-link:hover{background:var(--bg-elevated)}
+.tips-text{font-size:13px;color:var(--text-secondary);line-height:1.6;padding:var(--space-sm) var(--space-md);background:var(--bg-tertiary);border-radius:var(--radius-sm)}
+.card__footer{display:flex;align-items:center;justify-content:space-between;padding:var(--space-md) var(--space-lg);border-top:1px solid var(--border);flex-wrap:wrap;gap:var(--space-sm)}
+
+/* ============= Status Badges ============= */
+.badge{display:inline-block;padding:4px 10px;border-radius:var(--radius-full);font-size:11px;font-weight:600}
+.badge--draft{background:rgba(99,110,114,0.2);color:var(--status-draft)}
+.badge--filmed{background:rgba(253,203,110,0.2);color:var(--status-filmed)}
+.badge--editing{background:rgba(116,185,255,0.2);color:var(--status-editing)}
+.badge--published{background:rgba(0,184,148,0.2);color:var(--status-published)}
+
+/* ============= Forms ============= */
+.form-group{margin-bottom:var(--space-lg)}
+.form-label{display:block;font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:var(--space-sm)}
+.form-input,.form-textarea,.form-select{width:100%;padding:var(--space-md) var(--space-lg);background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary);font-size:14px;font-family:var(--font);transition:border-color var(--transition);-webkit-appearance:none}
+.form-input:focus,.form-textarea:focus,.form-select:focus{outline:none;border-color:var(--accent)}
+.form-textarea{resize:vertical;min-height:80px}
+.form-select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a0a0a0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'%3E%3C/path%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px}
+.form-hint{font-size:11px;color:var(--text-muted);margin-top:var(--space-xs)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-md)}
+
+/* ============= Empty State ============= */
+.empty-state{text-align:center;padding:var(--space-3xl) var(--space-xl)}
+.empty-state__icon{font-size:48px;margin-bottom:var(--space-lg);opacity:0.6}
+.empty-state__title{font-size:17px;font-weight:600;margin-bottom:var(--space-sm)}
+.empty-state__desc{font-size:13px;color:var(--text-secondary);margin-bottom:var(--space-xl);line-height:1.6}
+
+/* ============= Toast ============= */
+.toast-container{position:fixed;top:var(--space-lg);right:var(--space-lg);z-index:200;display:flex;flex-direction:column;gap:var(--space-sm);pointer-events:none}
+.toast{display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-md) var(--space-lg);border-radius:var(--radius-md);font-size:13px;font-weight:500;animation:toastIn var(--transition) ease;pointer-events:auto;max-width:320px}
+.toast--success{background:#00b894;color:#fff}
+.toast--error{background:#e17055;color:#fff}
+.toast--warning{background:#fdcb6e;color:#1a1a1a}
+.toast--info{background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border)}
+@keyframes toastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ============= Modal ============= */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:150;display:flex;align-items:center;justify-content:center;padding:var(--space-xl);animation:fadeIn var(--transition) ease}
+.modal-overlay[hidden]{display:none}
+.modal{background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-lg);width:100%;max-width:420px;max-height:80vh;overflow-y:auto;animation:slideUp var(--transition) ease}
+.modal__header{padding:var(--space-xl) var(--space-xl) 0;font-size:17px;font-weight:700}
+.modal__body{padding:var(--space-xl)}
+.modal__footer{display:flex;justify-content:flex-end;gap:var(--space-sm);padding:0 var(--space-xl) var(--space-xl)}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+/* ============= Calendar ============= */
+.calendar-day{margin-bottom:var(--space-xl)}
+.calendar-day__header{display:flex;align-items:center;gap:var(--space-sm);margin-bottom:var(--space-md);padding-bottom:var(--space-sm);border-bottom:1px solid var(--border)}
+.calendar-day__date{font-size:16px;font-weight:700}
+.calendar-day__weekday{font-size:12px;color:var(--text-muted)}
+.calendar-day__count{font-size:12px;color:var(--text-muted);margin-left:auto}
+.calendar-item{display:flex;align-items:center;gap:var(--space-md);padding:var(--space-md) var(--space-lg);background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:var(--space-sm);transition:border-color var(--transition)}
+.calendar-item:hover{border-color:var(--border-light)}
+.calendar-item__account{font-weight:600;font-size:13px;min-width:60px}
+.calendar-item__topic{flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.calendar-item__stats{display:flex;gap:var(--space-md);font-size:11px;color:var(--text-muted)}
+.calendar-item__stats span{white-space:nowrap}
+.filter-bar{display:flex;gap:var(--space-sm);margin-bottom:var(--space-xl);flex-wrap:wrap;justify-content:center}
+
+/* ============= Account List ============= */
+.account-list{display:flex;flex-direction:column;gap:var(--space-md);max-width:600px;margin:0 auto}
+.account-card{display:flex;align-items:center;gap:var(--space-lg);padding:var(--space-lg);background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md);transition:border-color var(--transition)}
+.account-card:hover{border-color:var(--border-light)}
+.account-card__info{flex:1}
+.account-card__name{font-weight:600;font-size:15px}
+.account-card__meta{font-size:12px;color:var(--text-secondary);margin-top:2px}
+.account-card__actions{display:flex;gap:var(--space-sm)}
+
+/* ============= Competitor ============= */
+.comp-list{display:flex;flex-direction:column;gap:var(--space-md);max-width:600px;margin:0 auto}
+.comp-card{background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden}
+.comp-card__main{display:flex;align-items:center;gap:var(--space-lg);padding:var(--space-lg)}
+.comp-card__info{flex:1}
+.comp-card__name{font-weight:600}
+.comp-card__meta{font-size:12px;color:var(--text-secondary)}
+.comp-card__videos{padding:var(--space-lg);border-top:1px solid var(--border);background:var(--bg-tertiary)}
+.video-item{display:flex;align-items:center;gap:var(--space-md);padding:var(--space-sm) 0;font-size:13px}
+.video-item+.video-item{border-top:1px solid var(--border)}
+.video-item__topic{flex:1}
+.video-item__date{font-size:11px;color:var(--text-muted)}
+
+/* ============= Settings ============= */
+.settings-section{max-width:600px;margin:0 auto}
+.settings-block{background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-xl);margin-bottom:var(--space-lg)}
+.settings-block h3{font-size:15px;font-weight:600;margin-bottom:var(--space-lg)}
+.danger-zone{border-color:var(--danger)}
+
+/* ============= Trend Tags ============= */
+.trend-section{max-width:720px;margin:0 auto var(--space-xl);padding:var(--space-lg);background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md)}
+.trend-section__header{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-md)}
+.trend-section__title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:var(--space-sm)}
+.trend-tags{display:flex;flex-wrap:wrap;gap:var(--space-sm)}
+.trend-tag{display:inline-flex;align-items:center;gap:var(--space-xs);padding:var(--space-sm) var(--space-md);background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-full);font-size:12px;cursor:pointer;transition:all var(--transition);user-select:none}
+.trend-tag:hover{border-color:var(--accent)}
+.trend-tag.selected{background:rgba(124,92,252,0.15);border-color:var(--accent);color:var(--accent)}
+.trend-tag .tag-icon{font-size:14px}
+.script-len-btn.active{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}
+.trend-empty{font-size:12px;color:var(--text-muted);padding:var(--space-md) 0;text-align:center}
+/* Discovery Results */
+.discover-results{display:flex;flex-direction:column;gap:var(--space-sm);max-height:50vh;overflow-y:auto}
+.discover-item{display:flex;align-items:center;gap:var(--space-md);padding:var(--space-md);background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);cursor:pointer;transition:all var(--transition)}
+.discover-item:hover{border-color:var(--accent)}
+.discover-item.selected{background:rgba(124,92,252,0.08);border-color:var(--accent)}
+.discover-item__check{width:20px;height:20px;border-radius:var(--radius-full);border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;transition:all var(--transition)}
+.discover-item.selected .discover-item__check{background:var(--accent);border-color:var(--accent);color:#fff}
+.discover-item__info{flex:1;min-width:0}
+.discover-item__name{font-weight:600;font-size:13px}
+.discover-item__meta{font-size:11px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ============= Loading Spinner ============= */
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-overlay{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-lg);padding:var(--space-3xl)}
+.loading-overlay .spinner{width:40px;height:40px;border-width:3px;border-color:rgba(124,92,252,0.3);border-top-color:var(--accent)}
+
+/* ============= Responsive ============= */
+@media (min-width: 768px){
+  .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:var(--space-xl);max-width:1100px}
+  .main-content{padding:var(--space-2xl) var(--space-3xl) var(--space-3xl)}
+  .form-row{grid-template-columns:1fr 1fr 1fr}
+}
+@media (min-width: 1024px){
+  .app-layout{flex-direction:row-reverse}
+  .tab-bar{position:sticky;top:0;flex-direction:column;justify-content:flex-start;height:100vh;width:var(--sidebar-w);border-top:none;border-left:1px solid var(--border);padding:var(--space-2xl) var(--space-md);gap:var(--space-xs)}
+  .tab-btn{flex-direction:row;gap:var(--space-md);font-size:13px;padding:var(--space-md) var(--space-lg);border-radius:var(--radius-md);width:100%;justify-content:flex-start}
+  .tab-btn:hover{background:var(--bg-tertiary)}
+  .tab-btn.active{background:rgba(124,92,252,0.1)}
+  .main-content{flex:1;padding:var(--space-3xl);max-width:calc(100vw - var(--sidebar-w))}
+  .tab-btn svg{width:20px;height:20px}
+}
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <!-- Tab Bar -->
+  <nav class="tab-bar" id="tab-bar">
+    <button class="tab-btn active" data-tab="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span>今日工作</span>
+    </button>
+    <button class="tab-btn" data-tab="accounts">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-7 8-7s8 3 8 7"/></svg>
+      <span>账号</span>
+    </button>
+    <button class="tab-btn" data-tab="competitors">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+      <span>对标</span>
+    </button>
+    <button class="tab-btn" data-tab="calendar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>
+      <span>日历</span>
+    </button>
+    <button class="tab-btn" data-tab="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M1 12h2M21 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <span>设置</span>
+    </button>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main-content" id="main-content">
+    <!-- Dashboard Panel -->
+    <section class="tab-panel" id="panel-dashboard">
+      <div class="panel-header">
+        <h1>📋 今日工作台</h1>
+        <p class="panel-subtitle" id="today-date"></p>
+        <div style="margin-top:var(--space-xl)">
+          <div style="max-width:520px;margin:0 auto var(--space-lg);display:flex;flex-direction:column;gap:var(--space-md)">
+            <input class="form-input" id="custom-topic" placeholder="💡 自定义主题（可选），如：双十一大促、新品上新" style="text-align:center">
+            <details style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md)">
+              <summary style="cursor:pointer;font-size:13px;color:var(--text-secondary);user-select:none">📦 产品信息（可选，填入后AI自动植入脚本）</summary>
+              <div style="display:flex;flex-direction:column;gap:var(--space-sm);margin-top:var(--space-md)">
+                <div style="display:flex;gap:var(--space-sm)">
+                  <input class="form-input" id="product-name" placeholder="产品名称，如：氨基酸洁面乳" style="flex:2">
+                  <input class="form-input" id="product-price" placeholder="价格，如：¥69.9" style="flex:1">
+                </div>
+                <input class="form-input" id="product-desc" placeholder="产品卖点，如：温和不紧绷、适合敏感肌">
+              </div>
+            </details>
+            <div style="display:flex;align-items:center;gap:var(--space-sm);justify-content:center">
+              <span style="font-size:13px;color:var(--text-secondary)">脚本时长:</span>
+              <button class="btn btn--sm btn--secondary script-len-btn active" data-action="set-script-len" data-len="30">30秒</button>
+              <button class="btn btn--sm btn--secondary script-len-btn" data-action="set-script-len" data-len="15">15秒</button>
+              <button class="btn btn--sm btn--secondary script-len-btn" data-action="set-script-len" data-len="60">60秒</button>
+              <input type="hidden" id="script-length" value="30">
+            </div>
+          </div>
+          <button class="btn btn--primary btn--lg" id="btn-generate" data-action="generate">
+            ✨ AI 生成今日内容
+          </button>
+        </div>
+      </div>
+      <div id="trend-section"></div>
+      <div id="dashboard-grid" class="card-grid"></div>
+    </section>
+
+    <!-- Accounts Panel -->
+    <section class="tab-panel" id="panel-accounts" hidden>
+      <div class="panel-header">
+        <h1>👤 账号管理</h1>
+        <p class="panel-subtitle">管理你的抖音账号矩阵</p>
+        <div style="margin-top:var(--space-xl)">
+          <button class="btn btn--primary" id="btn-add-account">+ 添加账号</button>
+        </div>
+      </div>
+      <div id="accounts-list" class="account-list"></div>
+    </section>
+
+    <!-- Competitors Panel -->
+    <section class="tab-panel" id="panel-competitors" hidden>
+      <div class="panel-header">
+        <h1>🎯 对标账号库</h1>
+        <p class="panel-subtitle">追踪竞品账号和爆款视频，AI 会参考这些数据</p>
+        <div style="margin-top:var(--space-xl);display:flex;gap:var(--space-md);justify-content:center;flex-wrap:wrap">
+          <button class="btn btn--primary" id="btn-add-competitor">+ 添加对标账号</button>
+          <button class="btn btn--secondary" id="btn-discover-competitors" data-action="discover-competitors">🤖 AI 发现对标</button>
+        </div>
+      </div>
+      <div id="competitors-list" class="comp-list"></div>
+    </section>
+
+    <!-- Calendar Panel -->
+    <section class="tab-panel" id="panel-calendar" hidden>
+      <div class="panel-header">
+        <h1>📅 内容日历</h1>
+        <p class="panel-subtitle">回顾历史内容与数据</p>
+      </div>
+      <div class="filter-bar" id="calendar-filters"></div>
+      <div id="calendar-content" style="max-width:700px;margin:0 auto"></div>
+    </section>
+
+    <!-- Settings Panel -->
+    <section class="tab-panel" id="panel-settings" hidden>
+      <div class="panel-header">
+        <h1>⚙️ 设置</h1>
+      </div>
+      <div class="settings-section" id="settings-content"></div>
+    </section>
+  </main>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+<!-- Modal Container -->
+<div class="modal-overlay" id="modal-overlay" hidden></div>
+
+<script>
+/* ====================================================================================
+   短视频内容工厂 - 完整应用
+   ==================================================================================== */
+(function(){
+'use strict';
+
+// ============ 0. CONSTANTS ============
+const STATUS_FLOW = ['draft', 'filmed', 'editing', 'published'];
+const STATUS_LABELS = { draft:'待拍摄', filmed:'已拍摄', editing:'剪辑中', published:'已发布' };
+const STORAGE_KEYS = { ACCOUNTS:'svf_accounts', COMPETITORS:'svf_competitors', CONTENT:'svf_content', SETTINGS:'svf_settings', TRENDS:'svf_trends' };
+const API_BASE = 'https://api.deepseek.com/v1/chat/completions';
+const API_MODEL = 'deepseek-chat';
+const WEEKDAYS = ['周日','周一','周二','周三','周四','周五','周六'];
+
+// ============ 1. UTILS ============
+function escapeHtml(str){ const d=document.createElement('div');d.textContent=str||'';return d.innerHTML }
+function formatDate(iso){ if(!iso)return '';const d=new Date(iso);return `${d.getMonth()+1}月${d.getDate()}日 ${WEEKDAYS[d.getDay()]}` }
+function todayStr(){ return new Date().toISOString().split('T')[0] }
+function daysAgo(n){ const d=new Date(Date.now()-n*86400000);return d.toISOString().split('T')[0] }
+function uuid(){ return crypto.randomUUID?.() || 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2,9) }
+
+function toast(msg, type='info'){
+  const t=document.createElement('div');
+  t.className=`toast toast--${type}`; t.textContent=msg;
+  document.getElementById('toast-container').appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity 200ms';setTimeout(()=>t.remove(),200)},2800);
+}
+
+function confirmDialog(title, msg){
+  return new Promise(resolve=>{
+    const overlay=document.getElementById('modal-overlay');
+    overlay.innerHTML=`
+      <div class="modal">
+        <div class="modal__header">${escapeHtml(title)}</div>
+        <div class="modal__body">${escapeHtml(msg)}</div>
+        <div class="modal__footer">
+          <button class="btn btn--secondary" id="modal-cancel">取消</button>
+          <button class="btn btn--danger" id="modal-confirm">确认</button>
+        </div>
+      </div>`;
+    overlay.hidden=false;
+    overlay.querySelector('#modal-cancel').onclick=()=>{overlay.hidden=true;resolve(false)};
+    overlay.querySelector('#modal-confirm').onclick=()=>{overlay.hidden=true;resolve(true)};
+  });
+}
+
+async function copyToClipboard(text){
+  try{await navigator.clipboard.writeText(text);return true}
+  catch{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);return true}
+}
+
+// ============ 2. STORAGE ============
+const Storage={
+  load(key){
+    try{const r=localStorage.getItem(key);return r?JSON.parse(r):null}
+    catch(e){console.error('Storage load error:',e);return null}
+  },
+  save(key,data){
+    try{localStorage.setItem(key,JSON.stringify(data));return true}
+    catch(e){
+      if(e.name==='QuotaExceededError') toast('存储空间不足，请前往设置导出数据后清理旧内容','error');
+      return false;
+    }
+  },
+  remove(key){ localStorage.removeItem(key) }
+};
+
+// ============ 3. STATE ============
+let state={
+  accounts:[],
+  competitors:[],
+  contentItems:[],
+  trends:[],
+  settings:{ apiKey:'', defaultNiche:'', defaultBgmStyle:'轻快' }
+};
+
+function loadState(){
+  state.accounts = Storage.load(STORAGE_KEYS.ACCOUNTS) || [];
+  state.competitors = Storage.load(STORAGE_KEYS.COMPETITORS) || [];
+  state.contentItems = Storage.load(STORAGE_KEYS.CONTENT) || [];
+  state.trends = Storage.load(STORAGE_KEYS.TRENDS) || [];
+  state.settings = Storage.load(STORAGE_KEYS.SETTINGS) || state.settings;
+}
+
+function saveAccounts(){ Storage.save(STORAGE_KEYS.ACCOUNTS, state.accounts) }
+function saveCompetitors(){ Storage.save(STORAGE_KEYS.COMPETITORS, state.competitors) }
+function saveContent(){ Storage.save(STORAGE_KEYS.CONTENT, state.contentItems) }
+function saveTrends(){ Storage.save(STORAGE_KEYS.TRENDS, state.trends) }
+function saveSettings(){ Storage.save(STORAGE_KEYS.SETTINGS, state.settings) }
+
+function getAccountById(id){ return state.accounts.find(a=>a.id===id) }
+
+// ============ 4. ROUTER ============
+let currentTab='dashboard';
+const TAB_ORDER=['dashboard','accounts','competitors','calendar','settings'];
+
+function switchTab(tabName){
+  if(currentTab===tabName) return;
+  currentTab=tabName;
+  document.querySelectorAll('.tab-panel').forEach(p=>p.hidden=p.id!=='panel-'+tabName);
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tabName));
+  renderTab(tabName);
+}
+
+function renderTab(tabName){
+  switch(tabName){
+    case 'dashboard': renderDashboard(); break;
+    case 'accounts': renderAccounts(); break;
+    case 'competitors': renderCompetitors(); break;
+    case 'calendar': renderCalendar(); break;
+    case 'settings': renderSettings(); break;
+  }
+}
+
+// ============ 5. DASHBOARD RENDERER ============
+function renderTrends(){
+  const container=document.getElementById('trend-section');
+  if(!state.trends.length){
+    container.innerHTML=``;
+    return;
+  }
+  const selectedTrends=state.trends.filter(t=>t.selected);
+  container.innerHTML=`
+    <div class="trend-section">
+      <div class="trend-section__header">
+        <span class="trend-section__title">🔥 今日热点 <span style="font-size:11px;color:var(--text-muted);font-weight:400">${selectedTrends.length}个选中，将融入内容生成</span></span>
+        <div style="display:flex;gap:var(--space-sm)">
+          <button class="btn btn--sm btn--ghost" data-action="refresh-trends">🔄 刷新热点</button>
+        </div>
+      </div>
+      <div class="trend-tags">
+        ${state.trends.map((t,i)=>`
+          <span class="trend-tag${t.selected?' selected':''}" data-action="toggle-trend" data-index="${i}">
+            <span class="tag-icon">${t.selected?'✅':'🔥'}</span> ${escapeHtml(t.title)}
+          </span>
+        `).join('')}
+      </div>
+      ${!state.trends.length?`<div class="trend-empty">点击刷新发现当前热门话题</div>`:''}
+    </div>`;
+}
+
+function renderDashboard(){
+  document.getElementById('today-date').textContent=formatDate(todayStr());
+  renderTrends();
+  const grid=document.getElementById('dashboard-grid');
+  const todayItems=state.contentItems.filter(c=>c.date===todayStr());
+
+  if(!state.accounts.length && !todayItems.length){
+    grid.innerHTML=`<div class="empty-state"><div class="empty-state__icon">📺</div><div class="empty-state__title">还没有账号</div><div class="empty-state__desc">先去「账号」Tab 添加你的抖音账号，<br>然后回来一键生成今日内容</div></div>`;
+    return;
+  }
+
+  if(!todayItems.length){
+    const hasKey=state.settings.apiKey;
+    grid.innerHTML=`<div class="empty-state"><div class="empty-state__icon">✨</div><div class="empty-state__title">今日内容还没生成</div><div class="empty-state__desc">${hasKey?'点击上方按钮，AI 将分析对标账号和历史数据<br>为你的 5 个账号生成今日选题和脚本':'请先去「设置」Tab 填入 DeepSeek API Key'}</div></div>`;
+    return;
+  }
+
+  const sorted=[...todayItems].sort((a,b)=>{
+    const ai=state.accounts.findIndex(ac=>ac.id===a.accountId);
+    const bi=state.accounts.findIndex(ac=>ac.id===b.accountId);
+    return ai-bi;
+  });
+
+  grid.innerHTML=sorted.map(item=>buildContentCard(item)).join('');
+}
+
+function buildContentCard(item){
+  const acct=getAccountById(item.accountId);
+  const acctName=acct?acct.name:'(账号已删除)';
+  const acctNiche=acct?acct.niche:'';
+  const initial=acctName[0]||'?';
+  const status=item.status||'draft';
+  const fullScript=[item.script?.hook,item.script?.body?.[0],item.script?.body?.[1],item.script?.cta].filter(Boolean).join('\n\n');
+
+  return `
+  <div class="card" data-item-id="${item.id}">
+    <div class="card__header">
+      <div class="card__header-left">
+        <div class="card__account-avatar">${escapeHtml(initial)}</div>
+        <div>
+          <div class="card__account-name">${escapeHtml(acctName)} ${acct?.douyinUrl?`<a href="${escapeHtml(acct.douyinUrl)}" target="_blank" style="font-size:12px;color:var(--info);text-decoration:none">🎵</a>`:''}</div>
+          ${acctNiche?`<div class="card__account-niche">${escapeHtml(acctNiche)}</div>`:''}
+        </div>
+      </div>
+      <span class="badge badge--${status}">${STATUS_LABELS[status]}</span>
+    </div>
+    <div class="card__body">
+      <div class="card__section">
+        <div class="card__label">🎬 选题</div>
+        <div class="card__topic">${escapeHtml(item.topic||'')}</div>
+        ${item.topicReasoning?`<div class="card__reasoning">💡 ${escapeHtml(item.topicReasoning)}</div>`:''}
+      </div>
+      <div class="card__section">
+        <div class="card__label">📝 脚本 <button class="btn btn--sm btn--ghost" data-action="copy-script" data-script="${escapeHtml(fullScript)}">📋 复制全文</button></div>
+        <div class="script-box">
+          ${item.script?.hook?`
+          <div class="script-box__section">
+            <span class="script-box__tag script-box__tag--hook">0-3秒 钩子</span>
+            <div class="script-box__text">${escapeHtml(item.script.hook)}</div>
+          </div>`:''}
+          ${item.script?.body?`
+          <div class="script-box__section">
+            <span class="script-box__tag script-box__tag--body">正文</span>
+            <div class="script-box__text">${escapeHtml(item.script.body)}</div>
+          </div>`:''}
+          ${item.script?.cta?`
+          <div class="script-box__section">
+            <span class="script-box__tag script-box__tag--cta">结尾引导</span>
+            <div class="script-box__text">${escapeHtml(item.script.cta)}</div>
+          </div>`:''}
+          ${!item.script?`<div class="script-box__text" style="color:var(--text-muted)">脚本待生成</div>`:''}
+        </div>
+      </div>
+      ${item.bgm?`
+      <div class="card__section">
+        <div class="card__label">🎵 BGM</div>
+        <div class="bgm-tag"><span class="note">🎵</span> ${escapeHtml(item.bgm.title||item.bgm)} ${item.bgm.style?`<span style="color:var(--text-muted);font-size:11px">${escapeHtml(item.bgm.style)}</span>`:''}</div>
+      </div>`:''}
+      ${item.referenceLinks?.length?`
+      <div class="card__section">
+        <div class="card__label">🔗 对标参考</div>
+        ${item.referenceLinks.map(l=>`<a href="${escapeHtml(l.url||'#')}" target="_blank" rel="noopener" class="ref-link">🔗 ${escapeHtml(l.description||l.url)}</a>`).join('')}
+      </div>`:''}
+      ${item.shootingTips?`
+      <div class="card__section">
+        <div class="card__label">🎥 拍摄建议</div>
+        <div class="tips-text">${escapeHtml(item.shootingTips)}</div>
+      </div>`:''}
+    </div>
+    <div class="card__footer">
+      <div style="display:flex;gap:var(--space-sm);align-items:center;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text-muted)">状态:</span>
+        ${STATUS_FLOW.map(s=>`
+          <button class="btn btn--sm ${status===s?'btn--primary':'btn--secondary'}" data-action="set-status" data-item-id="${item.id}" data-status="${s}">${STATUS_LABELS[s]}</button>
+        `).join('')}
+      </div>
+      ${status==='published'?`
+      <div style="display:flex;gap:var(--space-sm);align-items:center;font-size:12px">
+        <input type="number" class="form-input" style="width:80px;padding:4px 8px;font-size:12px" placeholder="播放量" data-action="set-views" data-item-id="${item.id}" value="${item.stats?.views||''}">
+        <input type="number" class="form-input" style="width:70px;padding:4px 8px;font-size:12px" placeholder="点赞" data-action="set-likes" data-item-id="${item.id}" value="${item.stats?.likes||''}">
+      </div>`:''}
+    </div>
+  </div>`;
+}
+
+// ============ 6. ACCOUNTS RENDERER ============
+function renderAccounts(){
+  const list=document.getElementById('accounts-list');
+  if(!state.accounts.length){
+    list.innerHTML=`<div class="empty-state"><div class="empty-state__icon">📺</div><div class="empty-state__title">还没有账号</div><div class="empty-state__desc">点击上方按钮添加你的第一个抖音账号</div></div>`;
+    return;
+  }
+  list.innerHTML=state.accounts.map(a=>`
+    <div class="account-card">
+      <div class="card__account-avatar">${escapeHtml(a.name[0]||'?')}</div>
+      <div class="account-card__info">
+        <div class="account-card__name">${escapeHtml(a.name)}</div>
+        <div class="account-card__meta">赛道: ${escapeHtml(a.niche||'未设置')} | 人设: ${escapeHtml(a.persona||'未设置')} ${a.videoCategory?`| 📹 ${escapeHtml(a.videoCategory)}`:''}</div>
+        ${a.competitorUsernames?.length?`<div class="account-card__meta">对标: ${escapeHtml(a.competitorUsernames.join(' / '))}</div>`:''}
+      </div>
+      <div class="account-card__actions">
+        ${a.douyinUrl?`<a href="${escapeHtml(a.douyinUrl)}" target="_blank" class="btn btn--sm btn--ghost" style="color:var(--info)">🎵 主页</a>`:''}
+        <button class="btn btn--sm btn--ghost" data-action="edit-account" data-id="${a.id}">编辑</button>
+        <button class="btn btn--sm btn--danger" data-action="delete-account" data-id="${a.id}">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function showAccountModal(account){
+  const isEdit=!!account;
+  const overlay=document.getElementById('modal-overlay');
+  overlay.innerHTML=`
+    <div class="modal">
+      <div class="modal__header">${isEdit?'编辑账号':'添加账号'}</div>
+      <div class="modal__body">
+        <div class="form-group"><label class="form-label">账号名称 *</label><input class="form-input" id="af-name" value="${escapeHtml(account?.name||'')}" placeholder="如：美妆小A"></div>
+        <div class="form-group"><label class="form-label">赛道 / 行业</label><input class="form-input" id="af-niche" value="${escapeHtml(account?.niche||state.settings.defaultNiche||'')}" placeholder="如：美妆护肤"></div>
+        <div class="form-group"><label class="form-label">人设 / 定位</label><input class="form-input" id="af-persona" value="${escapeHtml(account?.persona||'')}" placeholder="如：平价好物推荐官"></div>
+        <div class="form-group"><label class="form-label">视频类型</label><select class="form-select" id="af-video-category">${['','产品展示','教程科普','幕后花絮','客户反馈','行业热点','促销活动','日常vlog','对比测评','剧情演绎'].map(c=>`<option value="${c}" ${(account?.videoCategory||'')===c?'selected':''}>${c||'-- 请选择 --'}</option>`).join('')}</select><div class="form-hint">5个账号各选不同类型，保证素材差异化</div></div>
+        <div class="form-group"><label class="form-label">对标账号（抖音用户名，多个用逗号分隔）</label><input class="form-input" id="af-competitors" value="${escapeHtml(account?.competitorUsernames?.join(',')||'')}" placeholder="如：李佳琦,程十安"></div>
+        <div class="form-group"><label class="form-label">抖音主页链接</label><input class="form-input" id="af-douyin-url" value="${escapeHtml(account?.douyinUrl||'')}" placeholder="如：https://www.douyin.com/user/xxx"></div>
+        <div class="form-hint">填入后可一键跳转创作者主页</div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn--secondary" id="modal-cancel">取消</button>
+        <button class="btn btn--primary" id="modal-save">${isEdit?'保存':'添加'}</button>
+      </div>
+    </div>`;
+  overlay.hidden=false;
+
+  overlay.querySelector('#modal-cancel').onclick=()=>overlay.hidden=true;
+  overlay.querySelector('#modal-save').onclick=()=>{
+    const name=document.getElementById('af-name').value.trim();
+    if(!name){ toast('请输入账号名称','warning');return; }
+    const data={
+      name,
+      niche:document.getElementById('af-niche').value.trim(),
+      persona:document.getElementById('af-persona').value.trim(),
+      videoCategory:document.getElementById('af-video-category').value,
+      competitorUsernames:document.getElementById('af-competitors').value.split(',').map(s=>s.trim()).filter(Boolean),
+      douyinUrl:document.getElementById('af-douyin-url').value.trim()
+    };
+    if(isEdit){
+      Object.assign(account,data);
+    }else{
+      data.id=uuid();
+      state.accounts.push(data);
+    }
+    saveAccounts();
+    renderAccounts();
+    overlay.hidden=true;
+    toast(isEdit?'账号已更新':'账号已添加','success');
+  };
+}
+
+// ============ 7. COMPETITORS RENDERER ============
+function renderCompetitors(){
+  const list=document.getElementById('competitors-list');
+  if(!state.competitors.length){
+    list.innerHTML=`<div class="empty-state"><div class="empty-state__icon">🔍</div><div class="empty-state__title">还没有对标账号</div><div class="empty-state__desc">添加对标账号，AI 分析他们的爆款内容<br>帮你找到选题角度</div></div>`;
+    return;
+  }
+  list.innerHTML=state.competitors.map(c=>`
+    <div class="comp-card">
+      <div class="comp-card__main">
+        <div class="comp-card__info">
+          <div class="comp-card__name">${escapeHtml(c.name)} ${c.followers?`<span style="font-size:12px;color:var(--text-muted)">${c.followers}粉丝</span>`:''}</div>
+          <div class="comp-card__meta">赛道: ${escapeHtml(c.niche||'')} | 平台: ${escapeHtml(c.platform||'抖音')}</div>
+        </div>
+        <div style="display:flex;gap:var(--space-sm)">
+          <button class="btn btn--sm btn--ghost" data-action="add-viral" data-id="${c.id}">+ 爆款</button>
+          <button class="btn btn--sm btn--ghost" data-action="edit-competitor" data-id="${c.id}">编辑</button>
+          <button class="btn btn--sm btn--danger" data-action="delete-competitor" data-id="${c.id}">删除</button>
+        </div>
+      </div>
+      ${c.viralVideos?.length?`
+      <div class="comp-card__videos">
+        <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:var(--space-sm)">爆款视频</div>
+        ${c.viralVideos.map(v=>`
+        <div class="video-item">
+          <span style="font-size:16px">🔥</span>
+          <span class="video-item__topic"><a href="${escapeHtml(v.url||'#')}" target="_blank" style="color:var(--info);text-decoration:none">${escapeHtml(v.topic)}</a>${v.notes?`<br><span style="font-size:11px;color:var(--text-muted)">${escapeHtml(v.notes)}</span>`:''}</span>
+          <span class="video-item__date">${v.date||''}</span>
+          <button class="btn btn--sm btn--ghost" style="color:var(--danger)" data-action="remove-viral" data-comp-id="${c.id}" data-viral-url="${escapeHtml(v.url||'')}">×</button>
+        </div>`).join('')}
+      </div>`:''}
+    </div>
+  `).join('');
+}
+
+function showCompetitorModal(comp){
+  const isEdit=!!comp;
+  const overlay=document.getElementById('modal-overlay');
+  overlay.innerHTML=`
+    <div class="modal">
+      <div class="modal__header">${isEdit?'编辑对标账号':'添加对标账号'}</div>
+      <div class="modal__body">
+        <div class="form-group"><label class="form-label">抖音昵称 *</label><input class="form-input" id="cf-name" value="${escapeHtml(comp?.name||'')}" placeholder="如：李佳琦"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">粉丝数</label><input class="form-input" id="cf-followers" value="${comp?.followers||''}" placeholder="如：5000万"></div>
+          <div class="form-group"><label class="form-label">赛道</label><input class="form-input" id="cf-niche" value="${escapeHtml(comp?.niche||'')}" placeholder="如：美妆"></div>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn--secondary" id="modal-cancel">取消</button>
+        <button class="btn btn--primary" id="modal-save">${isEdit?'保存':'添加'}</button>
+      </div>
+    </div>`;
+  overlay.hidden=false;
+  overlay.querySelector('#modal-cancel').onclick=()=>overlay.hidden=true;
+  overlay.querySelector('#modal-save').onclick=()=>{
+    const name=document.getElementById('cf-name').value.trim();
+    if(!name){ toast('请输入名称','warning');return; }
+    const data={
+      name,
+      platform:'抖音',
+      followers:document.getElementById('cf-followers').value.trim(),
+      niche:document.getElementById('cf-niche').value.trim(),
+      viralVideos:comp?.viralVideos||[]
+    };
+    if(isEdit){ Object.assign(comp,data) }
+    else{ data.id=uuid(); state.competitors.push(data) }
+    saveCompetitors();
+    renderCompetitors();
+    overlay.hidden=true;
+    toast(isEdit?'对标账号已更新':'对标账号已添加','success');
+  };
+}
+
+function showViralModal(compId){
+  const comp=state.competitors.find(c=>c.id===compId);
+  if(!comp) return;
+  const overlay=document.getElementById('modal-overlay');
+  overlay.innerHTML=`
+    <div class="modal">
+      <div class="modal__header">添加爆款视频 - ${escapeHtml(comp.name)}</div>
+      <div class="modal__body">
+        <div class="form-group"><label class="form-label">视频链接</label><input class="form-input" id="vf-url" placeholder="抖音视频链接"></div>
+        <div class="form-group"><label class="form-label">视频选题/标题 *</label><input class="form-input" id="vf-topic" placeholder="这条视频讲什么"></div>
+        <div class="form-group"><label class="form-label">可借鉴的点</label><textarea class="form-textarea" id="vf-notes" placeholder="开头钩子怎么做的？有什么独特角度？"></textarea></div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn--secondary" id="modal-cancel">取消</button>
+        <button class="btn btn--primary" id="modal-save">添加</button>
+      </div>
+    </div>`;
+  overlay.hidden=false;
+  overlay.querySelector('#modal-cancel').onclick=()=>overlay.hidden=true;
+  overlay.querySelector('#modal-save').onclick=()=>{
+    const topic=document.getElementById('vf-topic').value.trim();
+    if(!topic){ toast('请输入选题','warning');return; }
+    if(!comp.viralVideos) comp.viralVideos=[];
+    comp.viralVideos.push({
+      url:document.getElementById('vf-url').value.trim(),
+      topic,
+      notes:document.getElementById('vf-notes').value.trim(),
+      date:formatDate(todayStr())
+    });
+    saveCompetitors();
+    renderCompetitors();
+    overlay.hidden=true;
+    toast('爆款视频已添加','success');
+  };
+}
+
+function showDiscoverModal(results,source=''){
+  const overlay=document.getElementById('modal-overlay');
+  const selected=new Set();
+  overlay.innerHTML=`
+    <div class="modal" style="max-width:520px">
+      <div class="modal__header">🤖 AI 发现的对标账号 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(${results.length}个${source?' · '+source:''})</span></div>
+      <div class="modal__body" style="padding:var(--space-md)">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:var(--space-md)">勾选想要添加的对标账号，支持多选</div>
+        <div class="discover-results">
+          ${results.map((r,i)=>`
+            <div class="discover-item" data-discover-index="${i}">
+              <div class="discover-item__check"></div>
+              <div class="discover-item__info">
+                <div class="discover-item__name">${escapeHtml(r.name)} ${r.followers?`<span style="color:var(--text-muted);font-weight:400;font-size:11px">${escapeHtml(r.followers)}</span>`:''}</div>
+                <div class="discover-item__meta">${escapeHtml(r.style||'')}${r.reason?` · ${escapeHtml(r.reason)}`:''}${r.niche?` · ${escapeHtml(r.niche)}`:''}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn--ghost btn--sm" id="modal-select-all">全选</button>
+        <button class="btn btn--secondary" id="modal-cancel">取消</button>
+        <button class="btn btn--primary" id="modal-save">添加到对标库</button>
+      </div>
+    </div>`;
+  overlay.hidden=false;
+  overlay.querySelector('#modal-cancel').onclick=()=>overlay.hidden=true;
+
+  // Toggle selection on click
+  overlay.querySelectorAll('.discover-item').forEach(el=>{
+    el.onclick=()=>{
+      const i=parseInt(el.dataset.discoverIndex);
+      if(selected.has(i)) selected.delete(i); else selected.add(i);
+      el.classList.toggle('selected',selected.has(i));
+      el.querySelector('.discover-item__check').textContent=selected.has(i)?'✓':'';
+    };
+  });
+
+  overlay.querySelector('#modal-select-all').onclick=()=>{
+    const all=selected.size===results.length;
+    overlay.querySelectorAll('.discover-item').forEach(el=>{
+      const i=parseInt(el.dataset.discoverIndex);
+      if(all){ selected.delete(i); el.classList.remove('selected'); el.querySelector('.discover-item__check').textContent=''; }
+      else{ selected.add(i); el.classList.add('selected'); el.querySelector('.discover-item__check').textContent='✓'; }
+    });
+    overlay.querySelector('#modal-select-all').textContent=all?'全选':'取消全选';
+  };
+
+  overlay.querySelector('#modal-save').onclick=()=>{
+    if(!selected.size){ toast('请至少选择一个账号','warning');return }
+    let added=0;
+    selected.forEach(i=>{
+      const r=results[i];
+      if(!state.competitors.some(c=>c.name===r.name)){
+        state.competitors.push({
+          id:uuid(), name:r.name, platform:'抖音', followers:r.followers||'', niche:r.niche||'',
+          style:r.style||'', reason:r.reason||'', viralVideos:[]
+        });
+        added++;
+      }
+    });
+    saveCompetitors();
+    renderCompetitors();
+    overlay.hidden=true;
+    toast(`已添加 ${added} 个对标账号`+(selected.size-added?'，'+(selected.size-added)+'个已存在':'') ,'success');
+  };
+}
+
+// ============ 8. CALENDAR RENDERER ============
+function renderCalendar(filterAccountId, filterStatus){
+  const container=document.getElementById('calendar-content');
+  const filters=document.getElementById('calendar-filters');
+
+  // Build filter bar
+  filters.innerHTML=`
+    <button class="btn btn--sm ${!filterAccountId&&!filterStatus?'btn--primary':'btn--secondary'}" data-action="cal-filter" data-account="" data-status="">全部</button>
+    ${state.accounts.map(a=>`<button class="btn btn--sm ${filterAccountId===a.id?'btn--primary':'btn--secondary'}" data-action="cal-filter" data-account="${a.id}" data-status="${filterStatus||''}">${escapeHtml(a.name)}</button>`).join('')}
+    <span style="margin:0 4px"></span>
+    ${STATUS_FLOW.map(s=>`<button class="btn btn--sm ${filterStatus===s?'btn--primary':'btn--secondary'}" data-action="cal-filter" data-account="${filterAccountId||''}" data-status="${s}">${STATUS_LABELS[s]}</button>`).join('')}
+  `;
+
+  let items=[...state.contentItems].sort((a,b)=>b.date.localeCompare(a.date));
+  if(filterAccountId) items=items.filter(i=>i.accountId===filterAccountId);
+  if(filterStatus) items=items.filter(i=>i.status===filterStatus);
+
+  if(!items.length){
+    container.innerHTML=`<div class="empty-state"><div class="empty-state__icon">📭</div><div class="empty-state__title">暂无内容</div><div class="empty-state__desc">还没有发布过视频</div></div>`;
+    return;
+  }
+
+  // Group by date
+  const groups={};
+  items.forEach(i=>{ if(!groups[i.date]) groups[i.date]=[]; groups[i.date].push(i) });
+  const dates=Object.keys(groups).sort((a,b)=>b.localeCompare(a));
+
+  container.innerHTML=dates.map(date=>`
+    <div class="calendar-day">
+      <div class="calendar-day__header">
+        <span class="calendar-day__date">${formatDate(date)}</span>
+        <span class="calendar-day__count">${groups[date].length}条</span>
+      </div>
+      ${groups[date].map(item=>{
+        const acct=getAccountById(item.accountId);
+        return `
+        <div class="calendar-item">
+          <span class="calendar-item__account">${escapeHtml(acct?.name||'?')}</span>
+          <span class="calendar-item__topic">${escapeHtml(item.topic||'无选题')}</span>
+          <span class="badge badge--${item.status}">${STATUS_LABELS[item.status]}</span>
+          ${item.stats?.views?`<span class="calendar-item__stats"><span>👁 ${item.stats.views}</span></span>`:''}
+          <button class="btn btn--sm btn--ghost" data-action="delete-content" data-id="${item.id}" style="color:var(--danger)">删除</button>
+        </div>`;
+      }).join('')}
+    </div>
+  `).join('');
+}
+
+// ============ 9. SETTINGS RENDERER ============
+function renderSettings(){
+  const container=document.getElementById('settings-content');
+  container.innerHTML=`
+    <div class="settings-block">
+      <h3>🔑 DeepSeek API Key</h3>
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <input class="form-input" type="password" id="s-api-key" value="${escapeHtml(state.settings.apiKey||'')}" placeholder="sk-...">
+        <div class="form-hint">用于AI内容生成，必填</div>
+      </div>
+      <button class="btn btn--primary" id="btn-save-settings">保存设置</button>
+    </div>
+    <div class="settings-block">
+      <h3>🔍 AnySearch API Key <span style="font-size:11px;color:var(--text-muted);font-weight:400">（可选）</span></h3>
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <input class="form-input" type="password" id="s-anysearch-key" value="${escapeHtml(state.settings.anysearchApiKey||'')}" placeholder="留空使用匿名访问（频率较低）">
+        <div class="form-hint"><a href="https://anysearch.com/console/api-keys" target="_blank" style="color:var(--info)">免费申请</a>，用于实时搜索对标账号和热点。不填也可用但频率受限</div>
+      </div>
+    </div>
+    <div class="settings-block">
+      <h3>🎵 TikHub API Key <span style="font-size:11px;color:var(--text-muted);font-weight:400">（推荐）</span></h3>
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <input class="form-input" type="password" id="s-tikhub-key" value="${escapeHtml(state.settings.tikhubApiKey||'')}" placeholder="留空使用 AnySearch 兜底">
+        <div class="form-hint">⭐ <a href="https://user.tikhub.io/users/signup?referral_code=1wRL8eQk" target="_blank" style="color:var(--info)">免费注册</a>，每日签到送额度，直接调抖音真实 API。注册后用邀请码 1wRL8eQk 可获 $2 额度。</div>
+      </div>
+    </div>
+    <div class="settings-block">
+      <h3>📝 默认偏好</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">默认赛道</label>
+          <input class="form-input" id="s-niche" value="${escapeHtml(state.settings.defaultNiche||'')}" placeholder="如：美妆护肤">
+        </div>
+        <div class="form-group">
+          <label class="form-label">默认 BGM 风格</label>
+          <input class="form-input" id="s-bgm" value="${escapeHtml(state.settings.defaultBgmStyle||'轻快')}" placeholder="如：轻快活泼">
+        </div>
+      </div>
+    </div>
+    <div class="settings-block">
+      <h3>💾 数据备份</h3>
+      <div style="display:flex;gap:var(--space-md);flex-wrap:wrap">
+        <button class="btn btn--secondary" id="btn-export">📥 导出数据 (JSON)</button>
+        <button class="btn btn--secondary" id="btn-import-trigger" onclick="document.getElementById('import-file-input').click()">📤 导入数据 (JSON)</button>
+      </div>
+      <input type="file" id="import-file-input" accept=".json" style="display:none">
+    </div>
+    <div class="settings-block danger-zone">
+      <h3>⚠️ 危险操作</h3>
+      <button class="btn btn--danger" id="btn-clear-all">🗑 清空所有数据</button>
+      <div class="form-hint" style="margin-top:var(--space-sm)">此操作不可撤销，建议先导出备份</div>
+    </div>
+  `;
+
+  document.getElementById('btn-save-settings').onclick=()=>{
+    const apiKey=document.getElementById('s-api-key').value.trim();
+    state.settings.apiKey=apiKey;
+    state.settings.anysearchApiKey=document.getElementById('s-anysearch-key').value.trim();
+    state.settings.tikhubApiKey=document.getElementById('s-tikhub-key').value.trim();
+    state.settings.defaultNiche=document.getElementById('s-niche').value.trim();
+    state.settings.defaultBgmStyle=document.getElementById('s-bgm').value.trim();
+    saveSettings();
+    toast('设置已保存','success');
+  };
+
+  document.getElementById('btn-export').onclick=()=>{
+    const data={ accounts:state.accounts, competitors:state.competitors, contentItems:state.contentItems, trends:state.trends, settings:state.settings, exportedAt:new Date().toISOString() };
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=`content-factory-backup-${todayStr()}.json`;a.click();
+    URL.revokeObjectURL(url);
+    toast('数据已导出','success');
+  };
+
+  document.getElementById('import-file-input').onchange=async function(){
+    const file=this.files[0];
+    if(!file) return;
+    try{
+      const text=await file.text();
+      const data=JSON.parse(text);
+      if(!data.accounts||!data.contentItems){ toast('文件格式不正确','error');return }
+      // Backup current data first
+      const backup={accounts:state.accounts,competitors:state.competitors,contentItems:state.contentItems,settings:state.settings,backupAt:new Date().toISOString()};
+      Storage.save('svf_backup_before_import',backup);
+
+      state.accounts=data.accounts||[];
+      state.competitors=data.competitors||[];
+      state.contentItems=data.contentItems||[];
+      state.trends=data.trends||[];
+      if(data.settings) state.settings={...state.settings,...data.settings};
+      saveAccounts();saveCompetitors();saveContent();saveTrends();saveSettings();
+      toast(`导入成功！${data.accounts.length}个账号，${data.contentItems.length}条内容`,'success');
+      renderTab(currentTab);
+    }catch(e){
+      toast('文件解析失败：'+e.message,'error');
+    }
+    this.value='';
+  };
+
+  document.getElementById('btn-clear-all').onclick=async ()=>{
+    const confirmed=await confirmDialog('确认清空','将删除所有账号、对标数据、内容历史。此操作不可撤销。建议先导出备份。');
+    if(!confirmed) return;
+    Object.values(STORAGE_KEYS).forEach(k=>Storage.remove(k));
+    loadState();
+    toast('所有数据已清空','warning');
+    renderTab(currentTab);
+  };
+}
+
+// ============ 10. DEEPSEEK API ============
+const TIKHUB_BASE='https://api.tikhub.io';
+
+async function callTikHub(path,params={}){
+  const key=state.settings.tikhubApiKey;
+  if(!key) throw new Error('NO_TIKHUB_KEY');
+  const url=new URL(TIKHUB_BASE+path);
+  Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
+  const resp=await fetch(url.toString(),{headers:{'Authorization':`Bearer ${key}`},signal:AbortSignal.timeout(15000)});
+  if(!resp.ok) throw new Error(`TikHub ${resp.status}`);
+  return resp.json();
+}
+
+async function discoverTrends(){
+  const apiKey=state.settings.apiKey;
+  if(!apiKey){ toast('请先配置 API Key','warning');return null }
+  const niche=state.settings.defaultNiche||state.accounts[0]?.niche||'通用';
+  const broadMap={卤水:'美食',熟食:'美食',小吃:'美食',烘焙:'美食',火锅:'美食',烧烤:'美食',奶茶:'美食',咖啡:'美食',护肤:'美妆',彩妆:'美妆',女装:'穿搭',男装:'穿搭'};
+  const broadNiche=broadMap[niche]||niche;
+
+  // Try TikHub first (real Douyin data)
+  if(state.settings.tikhubApiKey){
+    try{
+      const [hotRes,musicRes]=await Promise.all([
+        callTikHub('/api/v1/douyin/web/fetch_hot_search_result').catch(()=>null),
+        callTikHub('/api/v1/douyin/app/v3/fetch_music_hot_search_list').catch(()=>null)
+      ]);
+      let trends=[];
+      // Parse hot search results
+      if(hotRes?.data?.word_list){
+        hotRes.data.word_list.slice(0,20).forEach(w=>{
+          trends.push({title:w.word||w.title||'',type:'topic',description:`热度: ${w.hot_value||'?'} | 当前抖音热搜`});
+        });
+      }
+      if(hotRes?.data?.billboard_data){
+        hotRes.data.billboard_data.slice(0,20).forEach(w=>{
+          trends.push({title:w.word||w.title||'',type:'trend',description:'抖音热榜'});
+        });
+      }
+      // Parse music hot search
+      if(musicRes?.data?.music_list){
+        musicRes.data.music_list.slice(0,10).forEach(m=>{
+          trends.push({title:m.music_name||m.title||'',type:'bgm',description:`热度: ${m.hot_value||'?'} | 抖音热门BGM`});
+        });
+      }
+      if(trends.length>5){
+        // Deduplicate
+        const seen=new Set();
+        return trends.filter(t=>t.title&&t.title.length>1&&!seen.has(t.title)&&seen.add(t.title)).slice(0,15);
+      }
+    }catch(e){console.log('TikHub trend error, falling back:',e);}
+  }
+
+  // Fallback: AnySearch (real-time web search for Douyin trends)
+  const anysearchKey=state.settings.anysearchApiKey||'';
+  let webResults=[];
+  try{
+    const queries=[
+      `抖音热搜榜 今天 ${new Date().getFullYear()} 热点话题`,
+      `抖音${broadNiche} 热门话题 趋势`,
+      `抖音 最新BGM 热门音乐 推荐`,
+      `抖音热搜 今日 排行 热点`
+    ];
+    const promises=queries.map((q,i)=>
+      fetch('https://api.anysearch.com/mcp',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',...(anysearchKey?{'Authorization':`Bearer ${anysearchKey}`}:{})},
+        body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'search',arguments:{query:q,max_results:6}},id:i+1})
+      }).then(r=>r.json()).then(d=>{
+        const r=d?.result?.content?.[0]?.results||d?.result?.results||[];
+        return r.map(x=>({title:x.title||'',url:x.url||'',snippet:x.snippet||x.description||''}));
+      }).catch(()=>[])
+    );
+    const all=await Promise.all(promises);
+    const seen=new Set();
+    webResults=all.flat().filter(r=>r.title&&r.title.length>3&&!seen.has(r.title)&&seen.add(r.title));
+  }catch(e){console.log('AnySearch trend error:',e);}
+
+  let ctx='';
+  if(webResults.length){
+    ctx=`\n📡 实时搜索到以下趋势信息（${webResults.length}条）：\n`;
+    webResults.slice(0,20).forEach((r,i)=>ctx+=`${i+1}. ${r.title}\n   ${r.snippet?.slice(0,150)||''}\n`);
+  }else{ctx=`\n请列出${broadNiche}赛道当前可能的热门话题。不确定的宁缺毋滥。`;}
+
+  const messages=[
+    {role:'system',content:'你是抖音热搜分析师。基于数据提取真实热搜、挑战赛、BGM。不确定的不列。只返回JSON。'},
+    {role:'user',content:`找出抖音"${broadNiche}"赛道当前最热的话题/挑战/BGM。${ctx}
+返回10-15条，严格JSON：{"trends":[{"title":"话题/BGM名称","type":"topic|challenge|bgm|trend","description":"为什么火"}]}`}
+  ];
+  try{
+    const resp=await fetch(API_BASE,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:API_MODEL,messages,temperature:0.7,max_tokens:2048,response_format:{type:'json_object'}})});
+    if(!resp.ok) throw new Error('请求失败');
+    const data=await resp.json();const content=data.choices[0].message.content;
+    let parsed;try{parsed=JSON.parse(content)}catch{const m=content.match(/\{[\s\S]*\}/);if(m)parsed=JSON.parse(m[0]);else throw new Error('格式异常');}
+    return (parsed.trends||[]).filter(t=>t.title);
+  }catch(e){toast('热点发现失败: '+e.message,'error');return null;}
+}
+
+async function discoverCompetitors(){
+  const apiKey=state.settings.apiKey;
+  if(!apiKey){ toast('请先配置 DeepSeek API Key','warning');return null }
+  const niche=state.settings.defaultNiche||state.accounts[0]?.niche||'通用';
+  const broadMap={卤水:'美食',熟食:'美食',小吃:'美食',烘焙:'美食',火锅:'美食',烧烤:'美食',奶茶:'美食',咖啡:'美食',卤味:'美食',快餐:'美食',中餐:'美食',西餐:'美食',日料:'美食',韩餐:'美食',甜点:'美食',面食:'美食',海鲜:'美食',烤肉:'美食',串串:'美食',麻辣烫:'美食',凉皮:'美食',炸鸡:'美食',轻食:'美食',螺蛳粉:'美食',米粉:'美食',饺子:'美食',包子:'美食',豆腐:'美食',腌菜:'美食',腊味:'美食',卤菜:'美食',凉菜:'美食',私房菜:'美食',家常菜:'美食',探店:'美食',吃播:'美食',美食:'美食',护肤:'美妆',彩妆:'美妆',美发:'美妆',美甲:'美妆',女装:'穿搭',男装:'穿搭',童装:'母婴',家居:'家居',数码:'科技',汽车:'汽车',健身:'运动',减肥:'健康',旅游:'旅行',摄影:'摄影',萌宠:'宠物',房产:'房产',教育:'教育',财经:'财经',三农:'三农'};
+  const broadNiche=broadMap[niche]||niche;
+  const anysearchKey=state.settings.anysearchApiKey||'';
+
+  // Try TikHub first (real Douyin user search)
+  if(state.settings.tikhubApiKey){
+    try{
+      const searchTerms=[broadNiche,niche];
+      let allUsers=[];
+      for(const term of searchTerms){
+        const resp=await callTikHub('/api/v1/douyin/search/fetch_user_search_v2',{}).catch(()=>null);
+        // Try the creator search endpoint
+        const resp2=await callTikHub('/api/v1/douyin/creator/fetch_user_search',{keyword:term,offset:0,count:10}).catch(()=>null);
+        if(resp2?.data?.user_list){
+          resp2.data.user_list.forEach(u=>{
+            allUsers.push({
+              name:u.nickname||u.unique_id||'',
+              followers:u.follower_count?`${Math.floor(u.follower_count/10000)}w`:'',
+              niche:niche,style:u.signature||'',reason:'抖音真实搜索'
+            });
+          });
+        }
+      }
+      if(allUsers.length>=5){
+        const seen=new Set();
+        return {competitors:allUsers.filter(u=>u.name&&!seen.has(u.name)&&seen.add(u.name)).slice(0,15),source:'TikHub 抖音直接搜索'};
+      }
+    }catch(e){console.log('TikHub competitor error, falling back:',e);}
+  }
+
+  // Fallback: AnySearch (real-time web search for account lists)
+  let webResults=[];
+  try{
+    const yr=new Date().getFullYear();
+    const queries=[
+      `抖音${broadNiche}博主推荐 排行榜 ${yr} 最新 必关注`,
+      `抖音${broadNiche}账号 值得关注 推荐清单 粉丝量`,
+      `"抖音" "${broadNiche}" "博主" "粉丝" 推荐 site:zhihu.com`,
+      `${broadNiche} 抖音大V 盘点 热门账号 ${yr}`,
+      `抖音${niche} 头部账号 博主 昵称 粉丝`,
+      `抖音${broadNiche} 达人 排行榜 新榜 飞瓜`,
+    ];
+    const searchPromises=queries.map((q,i)=>
+      fetch('https://api.anysearch.com/mcp',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',...(anysearchKey?{'Authorization':`Bearer ${anysearchKey}`}:{})},
+        body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'search',arguments:{query:q,max_results:8}},id:i+1})
+      }).then(r=>r.json()).then(d=>{
+        const results=d?.result?.content?.[0]?.results||d?.result?.results||[];
+        return results.map(r=>({title:r.title||'',url:r.url||'',snippet:r.snippet||r.description||''}));
+      }).catch(()=>[])
+    );
+    const allResults=await Promise.all(searchPromises);
+    // Deduplicate and filter
+    const seen=new Set();
+    webResults=allResults.flat().filter(r=>r.title&&r.title.length>3&&!seen.has(r.title)&&seen.add(r.title));
+  }catch(e){ console.log('AnySearch error:',e); }
+
+  // Step 2: Also search for articles with lists of real accounts
+  let listResults=[];
+  try{
+    const listQueries=[
+      `"抖音" "美食博主" "推荐" "TOP" OR "排行"`,
+      `抖音美食 账号 昵称 列表 2025`
+    ];
+    const listPromises=listQueries.map((q,i)=>
+      fetch('https://api.anysearch.com/mcp',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',...(anysearchKey?{'Authorization':`Bearer ${anysearchKey}`}:{})},
+        body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'search',arguments:{query:q,max_results:5}},id:i+10})
+      }).then(r=>r.json()).then(d=>{
+        const results=d?.result?.content?.[0]?.results||d?.result?.results||[];
+        return results.map(r=>({title:r.title||'',url:r.url||'',snippet:r.snippet||r.description||''}));
+      }).catch(()=>[])
+    );
+    const allListResults=await Promise.all(listPromises);
+    const seen2=new Set(webResults.map(r=>r.title));
+    listResults=allListResults.flat().filter(r=>r.title&&r.title.length>3&&!seen2.has(r.title));
+  }catch(e){ console.log('AnySearch list error:',e); }
+
+  const allWebResults=[...webResults,...listResults];
+
+  // Step 3: Build rich context for DeepSeek
+  let webContext='';
+  if(allWebResults.length){
+    webContext=`\n\n📡 实时搜索到以下抖音${broadNiche}相关结果（共${allWebResults.length}条，请提取其中提到的真实抖音账号名）：\n`;
+    allWebResults.forEach((r,i)=>webContext+=`${i+1}. ${r.title}\n   ${r.snippet?.slice(0,200)||''}\n   ${r.url||''}\n`);
+    webContext+=`\n⚠️ 请务必从以上搜索结果中提取真实存在的抖音账号名（全网文章/知乎/小红书都有推荐）。不要编造不存在的账号。如果找不到足够多，可以在${broadNiche}大类中补充其他知名账号。`;
+  }else{
+    webContext=`\n⚠️ 注意：请根据你对抖音的了解，推荐${broadNiche}大类中真实存在的知名账号。不确定的不要推荐。`;
+  }
+
+  const messages=[
+    {role:'system',content:'你是抖音账号数据库。你只推荐抖音上真实存在、搜索即能找到的账号。不确定的绝对不推荐。只返回JSON。'},
+    {role:'user',content:`在抖音上找出10-15个"${broadNiche}"大类值得关注的对标账号。
+重要：我们自己做的是"${niche}"，但对标可以是整个"${broadNiche}"大类。
+
+规则：
+1. 只推荐抖音上真实存在、搜索昵称就能找到的账号（不确定的不要列）
+2. 覆盖头部大号(100w+粉)、腰部(10-100w)、新锐(1-10w)三个层次
+3. 每个账号给出：昵称、大致粉丝量级、内容风格、可借鉴点${webContext}
+
+严格JSON格式（不要额外文字）：
+{"competitors":[{"name":"账号昵称","followers":"粉丝量级","niche":"细分","style":"内容风格","reason":"可借鉴理由"}]}`}
+  ];
+  try{
+    const resp=await fetch(API_BASE,{
+      method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
+      body:JSON.stringify({model:API_MODEL,messages,temperature:0.6,max_tokens:3072,response_format:{type:'json_object'}})
+    });
+    if(!resp.ok) throw new Error('API 请求失败 (${resp.status})');
+    const data=await resp.json();
+    const content=data.choices[0].message.content;
+    let parsed;
+    try{ parsed=JSON.parse(content) }catch{
+      const m=content.match(/\{[\s\S]*\}/); if(m) parsed=JSON.parse(m[0]);
+      else throw new Error('返回格式异常');
+    }
+    if(!parsed.competitors||!Array.isArray(parsed.competitors)) throw new Error('返回格式异常');
+    const filtered=parsed.competitors.filter(c=>c.name&&c.name.length>1);
+    return {competitors:filtered,source:allWebResults.length?`实时搜索(${allWebResults.length}条结果)`:'AI知识库'};
+  }catch(e){
+    toast('对标发现失败: '+e.message,'error');
+    return null;
+  }
+}
+
+function buildAIPrompt(customTopic='',productInfo=null,scriptLen='30'){
+  const accounts=state.accounts;
+  const competitors=state.competitors;
+  const thirtyDaysAgo=daysAgo(30);
+  const recentItems=state.contentItems.filter(c=>c.date>=thirtyDaysAgo);
+
+  let userPrompt='今天需要为以下账号各策划1条抖音短视频：\n\n';
+  if(productInfo) userPrompt+=`📦 产品信息: ${productInfo.name}${productInfo.price?' | 价格: '+productInfo.price:''}${productInfo.desc?' | 卖点: '+productInfo.desc:''}\n请将产品自然植入脚本中，不要硬广念稿。\n\n`;
+  userPrompt+=`⏱ 脚本时长: ${scriptLen}秒（口播约${Math.round(scriptLen*4.5)}字，请严格控制字数）\n\n`;
+
+  accounts.forEach((a,i)=>{
+    userPrompt+=`【账号${i+1}】名称: ${a.name}, 赛道: ${a.niche||'未设置'}, 人设: ${a.persona||'未设置'}`;
+    if(a.videoCategory) userPrompt+=`, 视频类型: ${a.videoCategory}`;
+    if(a.competitorUsernames?.length) userPrompt+=`, 对标: ${a.competitorUsernames.join('、')}`;
+    userPrompt+='\n';
+  });
+
+  // Detect if accounts have categories set
+  const categories=accounts.map(a=>a.videoCategory).filter(Boolean);
+  if(categories.length){
+    const unique=[...new Set(categories)];
+    if(unique.length>=2){
+      userPrompt+=`\n⚠️ 重要：以上账号的视频类型各不相同，请为每个账号生成符合其类型的独特内容，避免题材撞车。\n`;
+    }
+  }
+
+  if(competitors.length){
+    userPrompt+='\n=== 对标账号库（请研究他们的视频风格和选题思路，但不要在脚本里提他们的名字）===\n';
+    competitors.forEach(c=>{
+      userPrompt+=`\n@${c.name} (${c.followers||'未知'}粉丝, ${c.niche||''}${c.style?', 风格: '+c.style:''}${c.reason?', 借鉴理由: '+c.reason:''}`;
+      if(c.viralVideos?.length){
+        userPrompt+='\n📹 对标视频（这些是你可以填入referenceLinks的真实链接）：\n';
+        c.viralVideos.forEach(v=>{ userPrompt+=`  - 视频: ${v.topic} | 可学: ${v.notes||'参考'} | 链接: ${v.url||''}\n` });
+      }
+    });
+    userPrompt+='\n⚠️ 请研究以上对标视频的内容，借鉴其选题角度和拍摄手法，但脚本中绝对不要出现任何对标账号的名字。referenceLinks 请直接使用上述真实视频链接。\n';
+  }
+
+  if(recentItems.length){
+    userPrompt+='\n=== 近30天已做内容（严禁重复，选题必须完全不同）===\n';
+    const seen=new Set();
+    recentItems.forEach(i=>{
+      const a=getAccountById(i.accountId);
+      const key=`${a?.name||'?'}: ${i.topic}`;
+      if(!seen.has(key)){ seen.add(key); userPrompt+=`- ${i.date} [${a?.name||'?'}] ${i.topic}\n`; }
+    });
+    if(recentItems.length>20){
+      userPrompt+=`\n以上共${recentItems.length}条历史内容。今天5条视频选题必须与以上完全不同，禁止任何形式的重复。\n`;
+    }
+  }
+
+  const selectedTrends=state.trends.filter(t=>t.selected);
+  userPrompt+=`\n请为每个账号生成1条今天的视频策划。要求：
+${customTopic?`- 🔥 今日指定主题: "${customTopic}"，所有视频请围绕此主题展开\n`:''}
+- 脚本严格控制在${scriptLen}秒以内，口播字数约${Math.round(scriptLen*4.5)}字，不要超时
+- 选题要有差异化角度，参考对标账号的爆款内容风格和选题思路，但不要抄袭
+- ⚠️ 脚本中绝对不要出现任何对标账号的名字（如"像XX那样"），参考的是思路不是人
+- ${accounts.length}个账号的视频内容类型要各不相同，避免素材重复
+- 脚本用口语化中文，适合口播
+- BGM 风格偏好: ${state.settings.defaultBgmStyle||'轻快'}
+${state.settings.defaultNiche?`- 所有内容围绕赛道: ${state.settings.defaultNiche}`:''}
+${selectedTrends.length?`\n=== 本期热点（选题时可参考融入，不要硬套）===\n${selectedTrends.map(t=>`- ${t.title} (${t.type||'topic'}): ${t.description||''}`).join('\n')}`:''}
+
+请严格按以下JSON格式返回（不要额外文字）：
+{
+  "videos": [
+    {
+      "accountName": "账号名称",
+      "topic": "选题标题",
+      "topicReasoning": "选题理由，说明为什么选这个角度，参考了上面哪个对标视频/账号的什么内容",
+      "script": {
+        "hook": "0-3秒钩子文案，吸引停留",
+        "body": "正文内容，口语化，适合口播，分2-3段",
+        "cta": "结尾引导，引导点赞关注评论"
+      },
+      "bgm": {"title": "推荐BGM名称","artist": "艺人","style": "风格"},
+      "referenceLinks": [{"url": "对标账号的具体视频抖音链接","description": "这条视频值得参考的点"}],
+      "shootingTips": "拍摄建议，包括场景、光线、角度、道具等"
+    }
+  ]
+}
+⚠️ referenceLinks 必须填写对标账号库里已有的视频URL（见上方爆款视频），如果确实没有可填写的就用空数组[]，不要编造链接。`;
+
+  return [
+    {role:'system',content:'你是抖音短视频策划专家。你擅长分析对标账号、挖掘选题角度、撰写口播脚本。你给出的策划有差异化、可执行、能帮客户拿到流量。你只用JSON格式回复，不输出其他文字。'},
+    {role:'user',content:userPrompt}
+  ];
+}
+
+async function generateContent(customTopic='',productInfo=null,scriptLen='30',retryCount=0){
+  const apiKey=state.settings.apiKey;
+  if(!apiKey){ toast('请先在「设置」Tab 填入 DeepSeek API Key','warning');return null }
+  if(!state.accounts.length){ toast('请先添加账号','warning');return null }
+  if(retryCount>=3){ toast('多次重试仍失败，请稍后再试','error');return null }
+
+  const messages=buildAIPrompt(customTopic,productInfo,scriptLen);
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),90000);
+
+  try{
+    const resp=await fetch(API_BASE,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
+      body:JSON.stringify({model:API_MODEL,messages,temperature:0.85,max_tokens:4096,response_format:{type:'json_object'}}),
+      signal:controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    if(!resp.ok){
+      const errText=await resp.text();
+      if(resp.status===401) throw new Error('API Key 无效，请检查后重试');
+      if(resp.status===429){ await new Promise(r=>setTimeout(r,3000)); return generateContent(retryCount+1) }
+      if(resp.status>=500){ await new Promise(r=>setTimeout(r,2000)); return generateContent(retryCount+1) }
+      throw new Error(`API 错误 (${resp.status}): ${errText.slice(0,100)}`);
+    }
+
+    const data=await resp.json();
+    const content=data.choices[0].message.content;
+    // Try to parse JSON (handle possible markdown wrapping)
+    let parsed;
+    try{ parsed=JSON.parse(content) }
+    catch{
+      const match=content.match(/\{[\s\S]*\}/);
+      if(match) parsed=JSON.parse(match[0]);
+      else throw new Error('AI 返回格式异常，请重试');
+    }
+
+    if(!parsed.videos||!Array.isArray(parsed.videos)) throw new Error('AI 返回数据不完整，请重试');
+    return parsed.videos;
+  }catch(e){
+    clearTimeout(timeout);
+    if(e.name==='AbortError'){ toast('请求超时，请检查网络后重试','error');return null }
+    toast(e.message||'生成失败','error');
+    console.error('API Error:',e);
+    return null;
+  }
+}
+
+// ============ 11. EVENT HANDLERS ============
+function initHandlers(){
+  // Tab switching
+  document.getElementById('tab-bar').addEventListener('click',e=>{
+    const btn=e.target.closest('[data-tab]');
+    if(btn) switchTab(btn.dataset.tab);
+  });
+
+  // Main content delegation
+  document.getElementById('main-content').addEventListener('click',async e=>{
+    const btn=e.target.closest('[data-action]');
+    if(!btn) return;
+    const action=btn.dataset.action;
+
+    // Generate content
+    // Script length toggle
+    if(action==='set-script-len'){
+      document.querySelectorAll('.script-len-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('script-length').value=btn.dataset.len;
+      return;
+    }
+
+    if(action==='generate'){
+      if(!state.settings.apiKey){ toast('请先去「设置」Tab 填入 DeepSeek API Key','warning');switchTab('settings');return }
+      if(!state.accounts.length){ toast('请先添加账号','warning');switchTab('accounts');return }
+
+      const customTopic=document.getElementById('custom-topic')?.value?.trim()||'';
+      const productName=document.getElementById('product-name')?.value?.trim()||'';
+      const productPrice=document.getElementById('product-price')?.value?.trim()||'';
+      const productDesc=document.getElementById('product-desc')?.value?.trim()||'';
+      const scriptLen=document.getElementById('script-length')?.value||'30';
+      const productInfo=productName?{name:productName,price:productPrice,desc:productDesc}:null;
+      btn.disabled=true;
+      const origText=btn.textContent;
+      btn.innerHTML='<span class="spinner"></span> AI 生成中...';
+      const videos=await generateContent(customTopic,productInfo,scriptLen);
+      btn.disabled=false;
+      btn.textContent=origText;
+
+      if(videos&&videos.length){
+        const today=todayStr();
+        // Remove existing today's items to avoid duplication
+        state.contentItems=state.contentItems.filter(c=>c.date!==today);
+        videos.forEach((v,i)=>{
+          // Match by name first, then by index
+          const acct=state.accounts.find(a=>a.name===v.accountName)||state.accounts[i]||state.accounts[0];
+          if(!acct) return;
+          state.contentItems.push({
+            id:uuid(), date:today, accountId:acct.id,
+            topic:v.topic, topicReasoning:v.topicReasoning||'',
+            script:v.script||{hook:'',body:'',cta:''},
+            bgm:v.bgm||'', referenceLinks:v.referenceLinks||[], shootingTips:v.shootingTips||'',
+            status:'draft', stats:null
+          });
+        });
+        saveContent();
+        renderDashboard();
+        toast(`已为 ${videos.length} 个账号生成今日内容！`,'success');
+      }
+    }
+
+    // Copy script
+    if(action==='copy-script'){
+      const script=btn.dataset.script;
+      if(script){
+        await copyToClipboard(script);
+        btn.classList.add('copied');
+        btn.textContent='✅ 已复制';
+        setTimeout(()=>{btn.classList.remove('copied');btn.textContent='📋 复制全文'},1500);
+      }
+    }
+
+    // Set status
+    if(action==='set-status'){
+      const itemId=btn.dataset.itemId;
+      const newStatus=btn.dataset.status;
+      const item=state.contentItems.find(c=>c.id===itemId);
+      if(item){ item.status=newStatus;saveContent();renderDashboard() }
+    }
+
+    // Add account
+    if(action==='edit-account'){
+      const acct=state.accounts.find(a=>a.id===btn.dataset.id);
+      if(acct) showAccountModal(acct);
+    }
+    if(action==='delete-account'){
+      const acct=state.accounts.find(a=>a.id===btn.dataset.id);
+      if(acct&&await confirmDialog('删除账号',`确定删除「${acct.name}」吗？该账号的历史内容仍会保留。`)){
+        state.accounts=state.accounts.filter(a=>a.id!==btn.dataset.id);
+        saveAccounts();renderAccounts();toast('账号已删除','warning');
+      }
+    }
+
+    // AI discover competitors
+    if(action==='discover-competitors'){
+      btn.disabled=true;
+      const origText=btn.textContent;
+      btn.innerHTML='<span class="spinner"></span> 实时搜索中...';
+      const result=await discoverCompetitors();
+      btn.disabled=false;
+      btn.textContent=origText;
+      if(result&&result.competitors&&result.competitors.length){
+        showDiscoverModal(result.competitors, result.source);
+        toast(`从${result.source}找到 ${result.competitors.length} 个对标账号`,'success');
+      }
+    }
+    // Toggle trend selection
+    if(action==='toggle-trend'){
+      const idx=parseInt(btn.dataset.index);
+      if(!isNaN(idx)&&state.trends[idx]){
+        state.trends[idx].selected=!state.trends[idx].selected;
+        saveTrends();
+        renderTrends();
+      }
+    }
+    // Refresh trends
+    if(action==='refresh-trends'){
+      btn.disabled=true;
+      const origText=btn.textContent;
+      btn.textContent='⏳ 分析中...';
+      const results=await discoverTrends();
+      btn.disabled=false;
+      btn.textContent=origText;
+      if(results&&results.length){
+        state.trends=results.map(t=>({...t,selected:false}));
+        saveTrends();
+        renderTrends();
+        toast(`发现 ${results.length} 个热点趋势`,'success');
+      }
+    }
+
+    // Competitor actions
+    if(action==='add-viral') showViralModal(btn.dataset.id);
+    if(action==='edit-competitor'){
+      const comp=state.competitors.find(c=>c.id===btn.dataset.id);
+      if(comp) showCompetitorModal(comp);
+    }
+    if(action==='delete-competitor'){
+      const comp=state.competitors.find(c=>c.id===btn.dataset.id);
+      if(comp&&await confirmDialog('删除对标账号',`确定删除「${comp.name}」吗？`)){
+        state.competitors=state.competitors.filter(c=>c.id!==btn.dataset.id);
+        saveCompetitors();renderCompetitors();toast('对标账号已删除','warning');
+      }
+    }
+    if(action==='remove-viral'){
+      const comp=state.competitors.find(c=>c.id===btn.dataset.compId);
+      if(comp){
+        comp.viralVideos=(comp.viralVideos||[]).filter(v=>v.url!==btn.dataset.viralUrl);
+        saveCompetitors();renderCompetitors();
+      }
+    }
+
+    // Calendar filters
+    if(action==='cal-filter'){
+      renderCalendar(btn.dataset.account||undefined,btn.dataset.status||undefined);
+    }
+
+    // Delete content item
+    if(action==='delete-content'){
+      const item=state.contentItems.find(c=>c.id===btn.dataset.id);
+      if(item&&await confirmDialog('删除内容',`确定删除「${item.topic}」这条内容吗？`)){
+        state.contentItems=state.contentItems.filter(c=>c.id!==btn.dataset.id);
+        saveContent();
+        renderCalendar();
+        toast('内容已删除','warning');
+      }
+    }
+  });
+
+  // Handle stats input changes
+  document.getElementById('main-content').addEventListener('change',e=>{
+    const inp=e.target;
+    const action=inp.dataset.action;
+    if(action==='set-views'||action==='set-likes'){
+      const itemId=inp.dataset.itemId;
+      const item=state.contentItems.find(c=>c.id===itemId);
+      if(item){
+        if(!item.stats) item.stats={};
+        if(action==='set-views') item.stats.views=parseInt(inp.value)||0;
+        if(action==='set-likes') item.stats.likes=parseInt(inp.value)||0;
+        saveContent();
+      }
+    }
+  });
+
+  // Buttons outside main content
+  document.getElementById('btn-add-account').onclick=()=>showAccountModal(null);
+  document.getElementById('btn-add-competitor').onclick=()=>showCompetitorModal(null);
+}
+
+// ============ 12. INIT ============
+function init(){
+  loadState();
+  initHandlers();
+  // If API key not set, suggest going to settings
+  if(!state.settings.apiKey&&!state.accounts.length){
+    // First time user - show dashboard with guidance
+  }
+  renderDashboard();
+  updateTodayDate();
+
+  // Listen for storage changes from other tabs
+  window.addEventListener('storage',()=>{
+    loadState();
+    renderTab(currentTab);
+  });
+}
+
+function updateTodayDate(){
+  document.getElementById('today-date').textContent=formatDate(todayStr());
+}
+
+// Bootstrap
+document.addEventListener('DOMContentLoaded',init);
+
+})();
+</script>
+</body>
+</html>
