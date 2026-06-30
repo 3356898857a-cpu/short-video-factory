@@ -293,8 +293,13 @@ body{font-family:var(--font);font-size:15px;color:var(--text-primary);background
       <div class="panel-header">
         <h1>👤 账号管理</h1>
         <p class="panel-subtitle">管理你的抖音账号矩阵</p>
-        <div style="margin-top:var(--space-xl)">
-          <button class="btn btn--primary" id="btn-add-account">+ 添加账号</button>
+        <div style="margin-top:var(--space-xl);display:flex;flex-direction:column;align-items:center;gap:var(--space-md)">
+          <div style="display:flex;gap:var(--space-sm);max-width:400px;width:100%">
+            <input class="form-input" id="import-douyin-url" placeholder="📥 粘贴抖音主页链接或抖音号，自动读取账号信息" style="flex:1;font-size:13px">
+            <button class="btn btn--secondary btn--sm" id="btn-import-douyin" style="white-space:nowrap">导入</button>
+          </div>
+          <div id="import-status" style="font-size:11px;color:var(--text-muted)"></div>
+          <button class="btn btn--primary" id="btn-add-account">+ 手动添加</button>
         </div>
       </div>
       <div id="accounts-list" class="account-list"></div>
@@ -610,19 +615,21 @@ function renderAccounts(){
   `).join('');
 }
 
-function showAccountModal(account){
+function showAccountModal(account,importInfo){
   const isEdit=!!account;
+  const prefill=importInfo||state.settings._importInfo||{};
+  if(importInfo) state.settings._importInfo=importInfo;
   const overlay=document.getElementById('modal-overlay');
   overlay.innerHTML=`
     <div class="modal">
-      <div class="modal__header">${isEdit?'编辑账号':'添加账号'}</div>
+      <div class="modal__header">${isEdit?'编辑账号':'添加账号'}${prefill.name?' (从抖音导入)':''}</div>
       <div class="modal__body">
-        <div class="form-group"><label class="form-label">账号名称 *</label><input class="form-input" id="af-name" value="${escapeHtml(account?.name||'')}" placeholder="如：美妆小A"></div>
+        <div class="form-group"><label class="form-label">账号名称 *</label><input class="form-input" id="af-name" value="${escapeHtml(account?.name||prefill.name||'')}" placeholder="如：美妆小A"></div>
         <div class="form-group"><label class="form-label">赛道 / 行业</label><input class="form-input" id="af-niche" value="${escapeHtml(account?.niche||state.settings.defaultNiche||'')}" placeholder="如：美妆护肤"></div>
-        <div class="form-group"><label class="form-label">人设 / 定位</label><input class="form-input" id="af-persona" value="${escapeHtml(account?.persona||'')}" placeholder="如：平价好物推荐官"></div>
+        <div class="form-group"><label class="form-label">人设 / 定位</label><input class="form-input" id="af-persona" value="${escapeHtml(account?.persona||prefill.persona||'')}" placeholder="如：平价好物推荐官"></div>
         <div class="form-group"><label class="form-label">视频类型</label><select class="form-select" id="af-video-category">${['','产品展示','教程科普','幕后花絮','客户反馈','行业热点','促销活动','日常vlog','对比测评','剧情演绎'].map(c=>`<option value="${c}" ${(account?.videoCategory||'')===c?'selected':''}>${c||'-- 请选择 --'}</option>`).join('')}</select><div class="form-hint">5个账号各选不同类型，保证素材差异化</div></div>
         <div class="form-group"><label class="form-label">对标账号（抖音用户名，多个用逗号分隔）</label><input class="form-input" id="af-competitors" value="${escapeHtml(account?.competitorUsernames?.join(',')||'')}" placeholder="如：李佳琦,程十安"></div>
-        <div class="form-group"><label class="form-label">抖音主页链接</label><input class="form-input" id="af-douyin-url" value="${escapeHtml(account?.douyinUrl||'')}" placeholder="如：https://www.douyin.com/user/xxx"></div>
+        <div class="form-group"><label class="form-label">抖音主页链接</label><input class="form-input" id="af-douyin-url" value="${escapeHtml(account?.douyinUrl||prefill.douyinUrl||'')}" placeholder="如：https://www.douyin.com/user/xxx"></div>
         <div class="form-hint">填入后可一键跳转创作者主页</div>
       </div>
       <div class="modal__footer">
@@ -632,7 +639,7 @@ function showAccountModal(account){
     </div>`;
   overlay.hidden=false;
 
-  overlay.querySelector('#modal-cancel').onclick=()=>overlay.hidden=true;
+  overlay.querySelector('#modal-cancel').onclick=()=>{overlay.hidden=true;delete state.settings._importInfo};
   overlay.querySelector('#modal-save').onclick=()=>{
     const name=document.getElementById('af-name').value.trim();
     if(!name){ toast('请输入账号名称','warning');return; }
@@ -644,15 +651,11 @@ function showAccountModal(account){
       competitorUsernames:document.getElementById('af-competitors').value.split(',').map(s=>s.trim()).filter(Boolean),
       douyinUrl:document.getElementById('af-douyin-url').value.trim()
     };
-    if(isEdit){
-      Object.assign(account,data);
-    }else{
-      data.id=uuid();
-      state.accounts.push(data);
-    }
-    saveAccounts();
-    renderAccounts();
-    overlay.hidden=true;
+    if(isEdit){Object.assign(account,data)}else{data.id=uuid();state.accounts.push(data)}
+    saveAccounts();renderAccounts();overlay.hidden=true;
+    delete state.settings._importInfo;
+    document.getElementById('import-douyin-url')&&(document.getElementById('import-douyin-url').value='');
+    document.getElementById('import-status')&&(document.getElementById('import-status').textContent='');
     toast(isEdit?'账号已更新':'账号已添加','success');
   };
 }
@@ -1553,6 +1556,52 @@ function initHandlers(){
   // Buttons outside main content
   document.getElementById('btn-add-account').onclick=()=>showAccountModal(null);
   document.getElementById('btn-add-competitor').onclick=()=>showCompetitorModal(null);
+
+  // Import Douyin account
+  document.getElementById('btn-import-douyin').onclick=async function(){
+    const input=document.getElementById('import-douyin-url');
+    const status=document.getElementById('import-status');
+    const raw=input.value.trim();
+    if(!raw){ toast('请输入抖音主页链接或抖音号','warning');return; }
+    this.disabled=true;this.textContent='读取中...';
+
+    if(!state.settings.tikhubApiKey){
+      status.textContent='请先在设置里配置 TikHub API Key';
+      this.disabled=false;this.textContent='导入';return;
+    }
+
+    try{
+      // Extract username from URL or use raw as username
+      let username=raw;
+      const urlMatch=raw.match(/douyin\.com\/user\/([^/?]+)/);
+      if(urlMatch) username=urlMatch[1];
+      else{username=raw.replace('@','').replace(/^抖音号[:：]?\s*/,'').trim()}
+
+      // Try TikHub user search to find account
+      const resp=await fetch(`https://api.tikhub.io/api/v1/douyin/creator/fetch_user_search?keyword=${encodeURIComponent(username)}&offset=0&count=1`,{
+        headers:{'Authorization':`Bearer ${state.settings.tikhubApiKey}`}
+      });
+      const data=await resp.json();
+      if(data?.data?.user_list?.length){
+        const u=data.data.user_list[0];
+        const info={
+          name:u.nickname||username,
+          douyinUrl:`https://www.douyin.com/user/${u.unique_id||username}`,
+        };
+        if(u.signature) info.persona=u.signature.slice(0,50);
+        if(u.follower_count) info._followers=Math.floor(u.follower_count/10000)+'w';
+        status.textContent=`✅ 已读取: ${info.name}${info._followers?' | '+info._followers+'粉丝':''}`;
+        // Auto-fill form
+        state.settings._importInfo=info;
+        showAccountModal(null,info);
+      }else{
+        status.textContent='未找到该账号，请检查后重试';
+      }
+    }catch(e){
+      status.textContent='读取失败: '+e.message;
+    }
+    this.disabled=false;this.textContent='导入';
+  };
 }
 
 // ============ 12. INIT ============
