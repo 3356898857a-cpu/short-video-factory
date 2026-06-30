@@ -294,10 +294,12 @@ body{font-family:var(--font);font-size:15px;color:var(--text-primary);background
         <h1>👤 账号管理</h1>
         <p class="panel-subtitle">管理你的抖音账号矩阵</p>
         <div style="margin-top:var(--space-xl);display:flex;flex-direction:column;align-items:center;gap:var(--space-md)">
-          <div style="display:flex;gap:var(--space-sm);max-width:400px;width:100%">
-            <input class="form-input" id="import-douyin-url" placeholder="📥 粘贴抖音号/昵称/主页链接自动读取" style="flex:1;font-size:13px">
-            <button class="btn btn--secondary btn--sm" id="btn-import-douyin" style="white-space:nowrap">导入</button>
-            <div class="form-hint" style="text-align:center;margin-top:4px">💡 如何获取: 抖音App → 我 → 右上角分享 → 复制链接。不要用 /user/self 这种登录态链接</div>
+          <div style="max-width:400px;width:100%">
+            <div style="display:flex;gap:var(--space-sm)">
+              <input class="form-input" id="import-douyin-url" placeholder="📥 粘贴抖音号/昵称/主页链接" style="flex:1;font-size:13px">
+              <button class="btn btn--secondary btn--sm" id="btn-import-douyin" style="white-space:nowrap">导入</button>
+            </div>
+            <div class="form-hint" style="margin-top:4px">💡 如何获取: 抖音App → 我 → 右上角分享 → 复制链接</div>
           </div>
           <div id="import-status" style="font-size:11px;color:var(--text-muted)"></div>
           <button class="btn btn--primary" id="btn-add-account">+ 手动添加</button>
