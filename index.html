@@ -966,18 +966,22 @@ function renderSettings(){
       <button class="btn btn--danger" id="btn-clear-all">🗑 清空所有数据</button>
       <div class="form-hint" style="margin-top:var(--space-sm)">此操作不可撤销，建议先导出备份</div>
     </div>
+    <div style="position:sticky;bottom:0;background:var(--bg-primary);padding:var(--space-lg) 0;border-top:1px solid var(--border);text-align:center;z-index:10;margin-top:var(--space-xl)">
+      <button class="btn btn--primary btn--lg" id="btn-save-settings-bottom" style="min-width:200px">💾 保存所有设置</button>
+    </div>
   `;
 
-  document.getElementById('btn-save-settings').onclick=()=>{
-    const apiKey=document.getElementById('s-api-key').value.trim();
-    state.settings.apiKey=apiKey;
+  function saveAllSettings(){
+    state.settings.apiKey=document.getElementById('s-api-key').value.trim();
     state.settings.anysearchApiKey=document.getElementById('s-anysearch-key').value.trim();
     state.settings.tikhubApiKey=document.getElementById('s-tikhub-key').value.trim();
     state.settings.defaultNiche=document.getElementById('s-niche').value.trim();
     state.settings.defaultBgmStyle=document.getElementById('s-bgm').value.trim();
     saveSettings();
-    toast('设置已保存','success');
-  };
+    toast('所有设置已保存 ✅','success');
+  }
+  document.getElementById('btn-save-settings').onclick=saveAllSettings;
+  document.getElementById('btn-save-settings-bottom').onclick=saveAllSettings;
 
   document.getElementById('btn-export').onclick=()=>{
     const data={ accounts:state.accounts, competitors:state.competitors, contentItems:state.contentItems, trends:state.trends, accountAnalytics:state.accountAnalytics, settings:state.settings, exportedAt:new Date().toISOString() };
