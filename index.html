@@ -1023,67 +1023,101 @@ async function discoverCompetitors(){
   const apiKey=state.settings.apiKey;
   if(!apiKey){ toast('请先配置 DeepSeek API Key','warning');return null }
   const niche=state.settings.defaultNiche||state.accounts[0]?.niche||'通用';
-  // Derive broad category: 卤水→美食, 护肤→美妆, 女装→穿搭, etc.
-  const broadMap={卤水:'美食',熟食:'美食',小吃:'美食',烘焙:'美食',火锅:'美食',烧烤:'美食',奶茶:'美食',咖啡:'美食',卤味:'美食',快餐:'美食',中餐:'美食',西餐:'美食',日料:'美食',韩餐:'美食',甜点:'美食',面食:'美食',海鲜:'美食',烤肉:'美食',串串:'美食',麻辣烫:'美食',护肤:'美妆',彩妆:'美妆',美发:'美妆',美甲:'美妆',女装:'穿搭',男装:'穿搭',童装:'母婴',家居:'家居',数码:'科技',汽车:'汽车',健身:'运动',减肥:'健康',旅游:'旅行',摄影:'摄影',萌宠:'宠物',房产:'房产',教育:'教育',财经:'财经',三农:'三农'};
+  // Derive broad category
+  const broadMap={卤水:'美食',熟食:'美食',小吃:'美食',烘焙:'美食',火锅:'美食',烧烤:'美食',奶茶:'美食',咖啡:'美食',卤味:'美食',快餐:'美食',中餐:'美食',西餐:'美食',日料:'美食',韩餐:'美食',甜点:'美食',面食:'美食',海鲜:'美食',烤肉:'美食',串串:'美食',麻辣烫:'美食',凉皮:'美食',炸鸡:'美食',轻食:'美食',螺蛳粉:'美食',米粉:'美食',饺子:'美食',包子:'美食',豆腐:'美食',腌菜:'美食',腊味:'美食',卤菜:'美食',凉菜:'美食',私房菜:'美食',家常菜:'美食',探店:'美食',吃播:'美食',美食:'美食',护肤:'美妆',彩妆:'美妆',美发:'美妆',美甲:'美妆',女装:'穿搭',男装:'穿搭',童装:'母婴',家居:'家居',数码:'科技',汽车:'汽车',健身:'运动',减肥:'健康',旅游:'旅行',摄影:'摄影',萌宠:'宠物',房产:'房产',教育:'教育',财经:'财经',三农:'三农'};
   const broadNiche=broadMap[niche]||niche;
   const anysearchKey=state.settings.anysearchApiKey||'';
 
-  // Step 1: Search broadly via AnySearch (real-time web)
+  // Step 1: Targeted search for real Douyin account lists
   let webResults=[];
   try{
-    const queries=niche!==broadNiche?[
-      `抖音美食 推荐账号 值得关注 头部博主 2025`,
-      `抖音 ${broadNiche} 热门账号 大V 推荐`,
-      `抖音 ${niche} ${broadNiche} 博主 账号 对标`,
-      `抖音 美食博主 排行 涨粉 最新`
-    ]:[
-      `抖音 ${niche} 推荐账号 值得关注 2025`,
-      `抖音 ${niche} 头部博主 热门账号`,
-      `${niche} 抖音 对标账号 竞品分析`
+    // Search specifically for account recommendation lists, rankings, and curation articles
+    const queries=[
+      `抖音${broadNiche}博主推荐 排行榜 2025 必关注`,
+      `抖音${broadNiche}账号 值得关注 推荐清单`,
+      `抖音${niche} ${broadNiche} 博主 账号名 粉丝`,
+      `"抖音" "${broadNiche}" "博主" "粉丝" 推荐 site:zhihu.com`,
+      `抖音${broadNiche}大V 盘点 热门账号 2025`
     ];
-    const searchPromises=queries.map(q=>
+    const searchPromises=queries.map((q,i)=>
       fetch('https://api.anysearch.com/mcp',{
         method:'POST',
         headers:{'Content-Type':'application/json',...(anysearchKey?{'Authorization':`Bearer ${anysearchKey}`}:{})},
-        body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'search',arguments:{query:q,max_results:5}},id:1})
+        body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'search',arguments:{query:q,max_results:8}},id:i+1})
       }).then(r=>r.json()).then(d=>{
         const results=d?.result?.content?.[0]?.results||d?.result?.results||[];
         return results.map(r=>({title:r.title||'',url:r.url||'',snippet:r.snippet||r.description||''}));
       }).catch(()=>[])
     );
     const allResults=await Promise.all(searchPromises);
-    webResults=[...new Set(allResults.flat().filter(r=>r.title).map(r=>JSON.stringify(r)))].map(r=>JSON.parse(r));
-  }catch(e){ console.log('AnySearch fallback:',e); }
+    // Deduplicate and filter
+    const seen=new Set();
+    webResults=allResults.flat().filter(r=>r.title&&r.title.length>3&&!seen.has(r.title)&&seen.add(r.title));
+  }catch(e){ console.log('AnySearch error:',e); }
 
-  // Step 2: Feed web results + niche to DeepSeek for intelligent structuring
+  // Step 2: Also search for articles with lists of real accounts
+  let listResults=[];
+  try{
+    const listQueries=[
+      `"抖音" "美食博主" "推荐" "TOP" OR "排行"`,
+      `抖音美食 账号 昵称 列表 2025`
+    ];
+    const listPromises=listQueries.map((q,i)=>
+      fetch('https://api.anysearch.com/mcp',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',...(anysearchKey?{'Authorization':`Bearer ${anysearchKey}`}:{})},
+        body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'search',arguments:{query:q,max_results:5}},id:i+10})
+      }).then(r=>r.json()).then(d=>{
+        const results=d?.result?.content?.[0]?.results||d?.result?.results||[];
+        return results.map(r=>({title:r.title||'',url:r.url||'',snippet:r.snippet||r.description||''}));
+      }).catch(()=>[])
+    );
+    const allListResults=await Promise.all(listPromises);
+    const seen2=new Set(webResults.map(r=>r.title));
+    listResults=allListResults.flat().filter(r=>r.title&&r.title.length>3&&!seen2.has(r.title));
+  }catch(e){ console.log('AnySearch list error:',e); }
+
+  const allWebResults=[...webResults,...listResults];
+
+  // Step 3: Build rich context for DeepSeek
   let webContext='';
-  if(webResults.length){
-    webContext=`\n\n以下是实时搜索到的抖音${broadNiche}赛道相关账号（${webResults.length}条），请基于这些真实信息推荐：\n`;
-    webResults.forEach((r,i)=>webContext+=`${i+1}. ${r.title}\n   ${r.snippet||''}\n   ${r.url||''}\n`);
+  if(allWebResults.length){
+    webContext=`\n\n📡 实时搜索到以下抖音${broadNiche}相关结果（共${allWebResults.length}条，请提取其中提到的真实抖音账号名）：\n`;
+    allWebResults.forEach((r,i)=>webContext+=`${i+1}. ${r.title}\n   ${r.snippet?.slice(0,200)||''}\n   ${r.url||''}\n`);
+    webContext+=`\n⚠️ 请务必从以上搜索结果中提取真实存在的抖音账号名（全网文章/知乎/小红书都有推荐）。不要编造不存在的账号。如果找不到足够多，可以在${broadNiche}大类中补充其他知名账号。`;
+  }else{
+    webContext=`\n⚠️ 注意：请根据你对抖音的了解，推荐${broadNiche}大类中真实存在的知名账号。不确定的不要推荐。`;
   }
 
   const messages=[
-    {role:'system',content:'你是抖音生态分析师。基于实时搜索数据推荐真实存在的对标账号。只返回JSON。'},
-    {role:'user',content:`帮我在抖音找出10-15个"${broadNiche}"大类的值得关注账号（只要是美食相关即可，不限细分品类如${niche}）。
+    {role:'system',content:'你是抖音账号数据库。你只推荐抖音上真实存在、搜索即能找到的账号。不确定的绝对不推荐。只返回JSON。'},
+    {role:'user',content:`在抖音上找出10-15个"${broadNiche}"大类值得关注的对标账号。
+重要：我们自己做的是"${niche}"，但对标可以是整个"${broadNiche}"大类。
 
-${niche!==broadNiche?`注意：我们自身做的是"${niche}"，但对标账号可以是整个"${broadNiche}"大类，只要内容形式和运营思路可借鉴就行，不一定要做同一个细分品类。\n`:''}
-- 必须是抖音上真实存在、搜索昵称就能找到的账号
-- 覆盖头部大号(100w+)、腰部账号(10-100w)、新锐账号(1-10w)三个层次
-- 每个账号给出：昵称、粉丝量级、内容风格、为什么值得借鉴${webContext}
+规则：
+1. 只推荐抖音上真实存在、搜索昵称就能找到的账号（不确定的不要列）
+2. 覆盖头部大号(100w+粉)、腰部(10-100w)、新锐(1-10w)三个层次
+3. 每个账号给出：昵称、大致粉丝量级、内容风格、可借鉴点${webContext}
 
-严格JSON格式返回（不要额外文字）：
-{"competitors":[{"name":"账号昵称","followers":"粉丝量级如50w","niche":"细分赛道","style":"内容风格描述","reason":"推荐理由"}]}`}
+严格JSON格式（不要额外文字）：
+{"competitors":[{"name":"账号昵称","followers":"粉丝量级","niche":"细分","style":"内容风格","reason":"可借鉴理由"}]}`}
   ];
   try{
     const resp=await fetch(API_BASE,{
       method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
-      body:JSON.stringify({model:API_MODEL,messages,temperature:0.7,max_tokens:2048,response_format:{type:'json_object'}})
+      body:JSON.stringify({model:API_MODEL,messages,temperature:0.6,max_tokens:3072,response_format:{type:'json_object'}})
     });
-    if(!resp.ok) throw new Error('API 请求失败');
+    if(!resp.ok) throw new Error('API 请求失败 (${resp.status})');
     const data=await resp.json();
-    const parsed=JSON.parse(data.choices[0].message.content);
+    const content=data.choices[0].message.content;
+    let parsed;
+    try{ parsed=JSON.parse(content) }catch{
+      const m=content.match(/\{[\s\S]*\}/); if(m) parsed=JSON.parse(m[0]);
+      else throw new Error('返回格式异常');
+    }
     if(!parsed.competitors||!Array.isArray(parsed.competitors)) throw new Error('返回格式异常');
-    return {competitors:parsed.competitors,source:webResults.length?'实时搜索 + AI':'AI'};
+    const filtered=parsed.competitors.filter(c=>c.name&&c.name.length>1);
+    return {competitors:filtered,source:allWebResults.length?`实时搜索(${allWebResults.length}条结果)`:'AI知识库'};
   }catch(e){
     toast('对标发现失败: '+e.message,'error');
     return null;
