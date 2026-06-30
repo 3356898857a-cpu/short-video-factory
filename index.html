@@ -1525,47 +1525,17 @@ function initHandlers(){
       if(!state.settings.tikhubApiKey){ toast('请先配置 TikHub API Key','warning');return }
       btn.disabled=true;const orig=btn.textContent;btn.textContent='同步中...';
       try{
-        // Fetch user profile via correct TikHub search endpoint
-        const username=acct.douyinUrl?.match(/user\/([^/?]+)/)?.[1]||acct.name;
-        const profResp=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{
-          method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},
-          body:JSON.stringify({keyword:username,offset:0,count:1})
-        }).then(r=>r.json()).catch(()=>null);
-        const user=profResp?.data?.data?.[0]||profResp?.data?.user_list?.[0];
-        // Also try to get user posts
-        let videos=[];
-        if(user?.sec_uid){
-          const vResp=await fetch(`https://api.tikhub.io/api/v1/douyin/app/v3/fetch_user_post_videos?sec_user_id=${user.sec_uid}&max_cursor=0&count=15`,{
-            headers:{'Authorization':`Bearer ${state.settings.tikhubApiKey}`}
-          }).then(r=>r.json()).catch(()=>null);
-          videos=vResp?.data?.aweme_list||vResp?.data?.data||[];
+        const uid=acct.douyinUrl?.match(/user\/([^/?]+)/)?.[1]||acct.name;
+        let user=null,videos=[];
+        if(state.settings.tikhubApiKey){
+          try{const r=await fetch('https://api.tikhub.io/api/v1/douyin/search/fetch_user_search_v2',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.settings.tikhubApiKey}`},body:JSON.stringify({keyword:uid,offset:0,count:1})});const d=await r.json();user=d?.data?.data?.[0]||d?.data?.user_list?.[0];}catch(e){}
         }
-        const stats={
-          followers:user?.follower_count?Math.floor(user.follower_count/10000)+'w':'?',
-          following:user?.following_count||0,
-          videoCount:user?.aweme_count||videos.length,
-          totalLikes:user?.total_favorited||0,
-          recentVideos:videos.slice(0,10).map(v=>({
-            desc:v.desc||v.title||'',plays:v.statistics?.play_count||0,likes:v.statistics?.digg_count||0,
-            comments:v.statistics?.comment_count||0,shares:v.statistics?.share_count||0,
-            duration:v.duration||0,createTime:new Date((v.create_time||0)*1000).toISOString().split('T')[0]
-          })),
-          updatedAt:new Date().toISOString()
-        };
-        // Calculate best performing video type
-        if(stats.recentVideos.length){
-          const best=stats.recentVideos.reduce((a,b)=>a.likes>b.likes?a:b);
-          stats.bestVideo=best;
-          stats.avgPlays=Math.floor(stats.recentVideos.reduce((s,v)=>s+v.plays,0)/stats.recentVideos.length);
-          stats.avgLikes=Math.floor(stats.recentVideos.reduce((s,v)=>s+v.likes,0)/stats.recentVideos.length);
-        }
-        state.accountAnalytics[acct.id]=stats;
-        saveAnalytics();
-        renderAccounts();
-        toast(`✅ ${acct.name} 数据已同步 (${stats.videoCount}条视频)`, 'success');
-      }catch(e){toast('同步失败: '+e.message,'error')}
-      btn.disabled=false;btn.textContent=orig;
+        if(!user){try{const ak=state.settings.anysearchApiKey||'';const r=await fetch('https://api.anysearch.com/mcp',{method:'POST',headers:{'Content-Type':'application/json',...(ak?{'Authorization':`Bearer ${ak}`}:{})},body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'extract',arguments:{url:acct.douyinUrl||`https://www.douyin.com/user/${uid}`}},id:1})});const d=await r.json();const t=d?.result?.content||'';const fm=t.match(/(\\d+\\.?\\d*[万亿]?)\\s*(粉丝|获赞)/g);if(fm)user={nickname:uid,follower_count_str:fm[0]||''};}catch(e){}}
+        const stats={followers:user?.follower_count_str||(user?.follower_count?Math.floor(user.follower_count/10000)+'w':'?'),videoCount:user?.aweme_count||videos.length,recentVideos:videos,updatedAt:new Date().toISOString()};
+        if(stats.recentVideos.length){stats.avgPlays=Math.floor(stats.recentVideos.reduce((s,v)=>s+v.plays,0)/stats.recentVideos.length);stats.avgLikes=Math.floor(stats.recentVideos.reduce((s,v)=>s+v.likes,0)/stats.recentVideos.length);}
+        state.accountAnalytics[acct.id]=stats;saveAnalytics();renderAccounts();
+        toast(`✅ ${acct.name} 已同步${stats.followers!=='?'?' ('+stats.followers+'粉丝)':''}`,'success');
+      }catch(e){toast('同步失败: '+e.message,'error')}      btn.disabled=false;btn.textContent=orig;
       return;
     }
 
