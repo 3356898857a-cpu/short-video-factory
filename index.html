@@ -992,27 +992,65 @@ async function discoverTrends(){
   const apiKey=state.settings.apiKey;
   if(!apiKey){ toast('请先配置 API Key','warning');return null }
   const niche=state.settings.defaultNiche||state.accounts[0]?.niche||'通用';
-  const messages=[
-    {role:'system',content:'你是抖音趋势分析师。找出当前热门话题、挑战赛、流行BGM。只返回JSON。'},
-    {role:'user',content:`分析"${niche}"赛道近期抖音热门趋势。找出：
-- 正在流行的挑战赛/话题标签
-- 最近爆火的BGM/音乐
-- 值得关注的流量趋势
-- 用户最近关心的热点话题
+  const anysearchKey=state.settings.anysearchApiKey||'';
+  const broadMap={卤水:'美食',熟食:'美食',小吃:'美食',烘焙:'美食',火锅:'美食',烧烤:'美食',奶茶:'美食',咖啡:'美食',护肤:'美妆',彩妆:'美妆',女装:'穿搭',男装:'穿搭'};
+  const broadNiche=broadMap[niche]||niche;
 
-返回10-15条，严格JSON格式：
-{"trends":[{"title":"热点标题/标签/话题/BGM名称","type":"topic|challenge|bgm|trend","description":"一句话说明为什么这个热点值得关注"}]}`}
+  // Step 1: Search for real Douyin trends via AnySearch
+  let webResults=[];
+  try{
+    const queries=[
+      `抖音热搜榜 今天 ${new Date().getFullYear()} 热点话题`,
+      `抖音${broadNiche} 热门话题 趋势 2026`,
+      `抖音 最新BGM 热门音乐 推荐 2026`,
+      `抖音热搜 今日 排行 热点`,
+      `${broadNiche} 抖音 热门挑战 话题标签 2026`
+    ];
+    const promises=queries.map((q,i)=>
+      fetch('https://api.anysearch.com/mcp',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',...(anysearchKey?{'Authorization':`Bearer ${anysearchKey}`}:{})},
+        body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'search',arguments:{query:q,max_results:6}},id:i+1})
+      }).then(r=>r.json()).then(d=>{
+        const r=d?.result?.content?.[0]?.results||d?.result?.results||[];
+        return r.map(x=>({title:x.title||'',url:x.url||'',snippet:x.snippet||x.description||''}));
+      }).catch(()=>[])
+    );
+    const all=await Promise.all(promises);
+    const seen=new Set();
+    webResults=all.flat().filter(r=>r.title&&r.title.length>3&&!seen.has(r.title)&&seen.add(r.title));
+  }catch(e){console.log('AnySearch trend error:',e);}
+
+  // Step 2: Feed to DeepSeek
+  let ctx='';
+  if(webResults.length){
+    ctx=`\n📡 实时搜索到以下抖音趋势信息（${webResults.length}条），请基于这些提取真实热点：\n`;
+    webResults.slice(0,20).forEach((r,i)=>ctx+=`${i+1}. ${r.title}\n   ${r.snippet?.slice(0,150)||''}\n`);
+  }else{
+    ctx=`\n请根据你对抖音的了解列出当前${broadNiche}赛道可能的热门话题。如果不够确定，宁缺毋滥。`;
+  }
+
+  const messages=[
+    {role:'system',content:'你是抖音热搜分析师。基于实时数据提取当前真实的热门话题、挑战赛、BGM。不确定的不列。只返回JSON。'},
+    {role:'user',content:`找出抖音"${broadNiche}"赛道当前最热的话题/挑战/BGM（${niche!==broadNiche?'我们做"'+niche+'"，但可以参考整个'+broadNiche+'大类的热点':''}）。
+
+要求：基于实时搜索数据，列出真实的热点，不要编造。${ctx}
+
+返回10-15条，严格JSON：
+{"trends":[{"title":"热点话题/标签/BGM名称","type":"topic|challenge|bgm|trend","description":"说明为什么火，如何借势"}]}`}
   ];
   try{
     const resp=await fetch(API_BASE,{
       method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
-      body:JSON.stringify({model:API_MODEL,messages,temperature:0.9,max_tokens:2048,response_format:{type:'json_object'}})
+      body:JSON.stringify({model:API_MODEL,messages,temperature:0.7,max_tokens:2048,response_format:{type:'json_object'}})
     });
     if(!resp.ok) throw new Error('API 请求失败');
     const data=await resp.json();
-    const parsed=JSON.parse(data.choices[0].message.content);
-    if(!parsed.trends||!Array.isArray(parsed.trends)) throw new Error('返回格式异常');
-    return parsed.trends;
+    const content=data.choices[0].message.content;
+    let parsed;
+    try{parsed=JSON.parse(content)}catch{const m=content.match(/\{[\s\S]*\}/);if(m)parsed=JSON.parse(m[0]);else throw new Error('格式异常');}
+    if(!parsed.trends||!Array.isArray(parsed.trends)) throw new Error('格式异常');
+    return parsed.trends.filter(t=>t.title&&t.title.length>1);
   }catch(e){
     toast('热点发现失败: '+e.message,'error');
     return null;
@@ -1028,16 +1066,17 @@ async function discoverCompetitors(){
   const broadNiche=broadMap[niche]||niche;
   const anysearchKey=state.settings.anysearchApiKey||'';
 
-  // Step 1: Targeted search for real Douyin account lists
+  // Step 1: Targeted search for real Douyin account lists from multiple sources
   let webResults=[];
   try{
-    // Search specifically for account recommendation lists, rankings, and curation articles
+    const yr=new Date().getFullYear();
     const queries=[
-      `抖音${broadNiche}博主推荐 排行榜 2025 必关注`,
-      `抖音${broadNiche}账号 值得关注 推荐清单`,
-      `抖音${niche} ${broadNiche} 博主 账号名 粉丝`,
+      `抖音${broadNiche}博主推荐 排行榜 ${yr} 最新 必关注`,
+      `抖音${broadNiche}账号 值得关注 推荐清单 粉丝量`,
       `"抖音" "${broadNiche}" "博主" "粉丝" 推荐 site:zhihu.com`,
-      `抖音${broadNiche}大V 盘点 热门账号 2025`
+      `${broadNiche} 抖音大V 盘点 热门账号 ${yr}`,
+      `抖音${niche} 头部账号 博主 昵称 粉丝`,
+      `抖音${broadNiche} 达人 排行榜 新榜 飞瓜`,
     ];
     const searchPromises=queries.map((q,i)=>
       fetch('https://api.anysearch.com/mcp',{
